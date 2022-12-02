@@ -1,22 +1,9 @@
 # Updated version of the MTGA bot that uses image recognition to determine where we are in the game
 # and what we will do next as opposed to looking for pixel intensity values in the game
+# The game does not have to be in a specific window mode, it will attempt to re-size and move the window to the place
+# where the program needs it to be. Windowed mode is recommended.
 
-"""
-Magic The Gathering Arena bot that auto-plays to brute force daily and weekly rewards for gold/XP.
-MTGA should be in windowed mode.
-Program assumes a default size of 1600 x 900, on primary monitor, and graphics adjusted to low. 
-Note: All scaling will be done from a 1600x900 offset of where the original pixels were at this resolution
-MTGA client needs to
-be already launched and signed into (or you can use a BAT file to launch this script and game simultaneously as a
-scheduled task).
-This bot will not work out of the box if you run it now. It's dependant on grayscale values at various points on
-the screen. I'm not providing the values I used in the code, firstly because it's dependant on screen resolution and
-untested on any machine other than my own, and second because I don't want just anybody who comes across this to be
-able to take advantage and run a MTGA bot. I'm posting this primarily as a record of the code, not because I want to
-distribute a bot. You will have to figure out the grayscale values in the Range class for yourself. I've left some
-in for reference.
-~ defaultroot - 8th Feb 2020
-"""
+
 
 from PIL import ImageGrab, ImageOps
 import numpy                    # gives us access to array
