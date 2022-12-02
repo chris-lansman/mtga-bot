@@ -83,7 +83,7 @@ def extract_text():
     # img = ImageGrab.grab((1725,977,1820,996)) # Finds "to blockers" in game under next button
     # img = ImageGrab.grab((1725,977,1820,996)) # Finds "to attackers" in game under next button
     # img = ImageGrab.grab((1716,932,1835,965)) # Finds "resolve" in game
-    img = ImageGrab.grab((802,87,1119,143)) # Finds "cancel" in game center of screen
+    img = ImageGrab.grab((802,87,1119,143)) # Finds "choose one" in game center of screen
     
     
     # for key, button in button_dict.items():
