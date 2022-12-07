@@ -110,6 +110,7 @@ BLOCK_THRESHOLD =  200  # Used on the order blocker screen as the text is slight
 
 def extract_text(bb_coordinates, threshold=235):
     
+    # Grab a box based on (x,y,x,y) coordinates
     img = ImageGrab.grab(bb_coordinates) 
     img = ImageOps.grayscale(img)   
     img = img.filter(ImageFilter.SMOOTH)
@@ -170,22 +171,22 @@ def scan_screen_for_text(items_to_scan=text_loc_dict):
 class Cord:
 
     # Maintain co-ordinates of locations to mouse click
-    play_button_edge =  (1614, 980) # The play button on the dashboard, bottom right, point is at the edge of the button
+    #play_button_edge =  (1614, 980) # The play button on the dashboard, bottom right, point is at the edge of the button
     play_button =       (1665,1000)
     click_to_continue = (250, 200)   # Clicking (almost) anywhere on the screen to advance (usually after a match)
-    edit_deck =         (238,1035)   # The edit deck button on the left side of the screen
+    #edit_deck =         (238,1035)   # The edit deck button on the left side of the screen
     table_icon_illum =  (1740,145)  # Table icon in the upper right of the screen after the main screen
-    recently_played =   (1872,167)  # Recently played flag found on the screen after the main screen
-    gold_coins =        (1447,67)
-    gems =              (1566,70)
-    home_tab_main =     (111,104) # Home button in the upper left on the main screen
+    #recently_played =   (1872,167)  # Recently played flag found on the screen after the main screen
+    #gold_coins =        (1447,67)
+    #gems =              (1566,70)
+    #home_tab_main =     (111,104) # Home button in the upper left on the main screen
     
     # Sub-main screen items
     deck_select =          (460,580) # Deck just left of the big '+'
-    sub_screen_empty_pt1 = (60,240)  # Empty area on the left side of the screen
-    sub_screen_empty_pt2 = (60,380)
-    sub_screen_empty_pt3 = (60,550)
-    sub_screen_empty_pt4 = (60,750)
+    #sub_screen_empty_pt1 = (60,240)  # Empty area on the left side of the screen
+    #sub_screen_empty_pt2 = (60,380)
+    #sub_screen_empty_pt3 = (60,550)
+    #sub_screen_empty_pt4 = (60,750)
     
     # Mode icon diamonds
     std_ply_chk =        (1600,490) # Standard play choice check mark on table screen
@@ -196,29 +197,29 @@ class Cord:
     
     # In-game items
     cancel_button =         (1770,950)
-    done_button =           (963,872)
+    #done_button =           (963,872)
     keep_draw_button =      (1130, 870)  # Accept drawn cards at start of match
-    mulligan_button =       (681,847)    # Mulligan button at start of match when cards are ready to pick
-    question_mark_area =    (610,876)    # dark spot next to the question mark icon on the select card screen at start of match
-    friends_icon =          (40,1030)    # Friends icon in the lower left corner
-    pass_turn =             (1850, 1030) # Pass turn button (during both player's turns)
+    #mulligan_button =       (681,847)    # Mulligan button at start of match when cards are ready to pick
+    #question_mark_area =    (610,876)    # dark spot next to the question mark icon on the select card screen at start of match
+    #friends_icon =          (40,1030)    # Friends icon in the lower left corner
+    #pass_turn =             (1850, 1030) # Pass turn button (during both player's turns)
     no_attacks_button =     (1770, 880)  # During combat phase, the No Attacks button
     opponent_avatar =       (970, 136)   # To select when attacking in case opponent has Planeswalker in play
     undo_button =           (1864, 747)  # Undo button when casting a spell
     resolve_button =        (1770, 950)  # Resolve button, also No Blocks during opponent combat
-    cancel_area =           (1730, 1030) # Just a blank area to click to cancel
+    #cancel_area =           (1730, 1030) # Just a blank area to click to cancel
     order_blockers_done =   (970, 840)   # Click done to auto-assign damage to multiple blockers
-    p1_main_phase =         (840,878)
-    p1_second_phase =       (1081,877)
-    p2_main_phase =         (859,151)
-    p2_second_phase =       (1062,151)
+    #p1_main_phase =         (840,878)
+    #p1_second_phase =       (1081,877)
+    #p2_main_phase =         (859,151)
+    #p2_second_phase =       (1062,151)
     card_option_left =      (623,316)
     card_option_left_click = (751,483)
-    shield_icon =           (1758,832)
+    #shield_icon =           (1758,832)
     next_button =           (1780,940)
-    sword_icon =            (1726,830)
-    block_order =           (1316, 783)
-    blocking_shield =       (1759,895)
+    #sword_icon =            (1726,830)
+    #block_order =           (1316, 783)
+    #blocking_shield =       (1759,895)
 
     # Card positions to play. There may or may not be a card at these spots but try anyway
     cards_in_hand = ((1000,1050), 
@@ -388,10 +389,13 @@ def check_if_my_turn():
 
 def check_in_match():
 
-    # If we are in match only certain text will be on the screen, check for that
-    # MTGA_USER_NAME, mulligan, keep, next, pass, no block, no attack, all attack, 
+    # If we are in match only certain text will be on the screen, check for:
+    # MTGA_USER_NAME, mulligan, keep, next, pass, no block, no attack, all attack.
+    # To speed up this call, only check if the match ended since we already "know"
+    # we are in a match. So only look for 'defeat' or 'victory' 
     global MTGA_USER_NAME
     
+    # Window may have changed, verify and re-set if needed.
     check_mtga_window_size()
     # Look for a subset of items on the screen now that we already know we are in game
     found_text = []
@@ -479,77 +483,6 @@ def check_if_my_card_draw_done():
         print("Assuming we are returning to an in-progress match")
         return True
 
-def play_my_cards():
-    """Keep trying to play cards from hand, if we have exhausted our cards to play but can attack
-    trigger the attack phase button clicks, else move on.
-    """
-    
-    # Its our turn, reset card cycles and start trying to play cards
-    card_cycles = 1
-    # Loop over our cards MAX_CARD_CYCLES times trying to play cards
-    while(card_cycles <= MAX_CARD_CYCLES):
-
-        print("Beginning card cycle phase...")
-
-        # Iterate over possible cards in our hand, this just picks spots on the screen
-        # that may or may not have cards sitting where it clicks.
-        for card in (Cord.cards_in_hand):
-            
-            # If at any time the match has ended, immediately break
-            if (check_in_match() == False):
-                print("in the middle of playing cards but i think the match ended!")
-                break
-            
-            # See if we have entered the combat phase, i.e. we have no cards left to play
-            # and there is a creature on the board who can attack
-            phase = turn_phase()
-            if ("play cards" == phase):
-                # Attempt to play a card from our hand
-                doubleLeftClick(card)
-                time.sleep(1)
-                # If playing a card required an action (undo, select card option), check for it
-                # and perform the action to continue game play. 
-                check_if_card_action_and_perform()
-                
-            elif ("attack phase" == phase):
-                # Allow possibly not attacking on a given turn if the randomly generated range is less than ATTACK_PROBABILITY
-                x = randrange(1, 101)
-                if x <= ATTACK_PROBABILITY:
-                    leftClick(Cord.resolve_button)
-                    time.sleep(1)
-                    # In case opponent has a planeswalker, always select the player as the attack target
-                    leftClick(Cord.opponent_avatar)
-                    leftClick(Cord.resolve_button)
-                    
-                    # If the opponent has chosen multiple blockers just click the done button
-                    found_text = []
-                    found_text.append(extract_text(text_loc_dict['order blockers'], BLOCK_THRESHOLD))
-                    found_text.append(extract_text(text_loc_dict['done'], BRIGHT_THRESHOLD))
-                    found_text.append(extract_text(text_loc_dict['first'], BRIGHT_THRESHOLD))
-                    if ( ('order blockers' in found_text) or
-                         ('done' in found_text) or
-                         ('first' in found_text)):
-                        print("Detected Block Order, clicking done...")
-                        leftClick(Cord.order_blockers_done)
-                else:
-                    print("Clicking No Attack Button")
-                    leftClick(Cord.no_attacks_button)
-                # Prevent trying to play cards again the next time around and leave this card cycle
-                card_cycles += 99
-                break
-            
-            elif ("opponents turn" == phase):
-                print("Cant play any more cards and cant attack and its auto-moved to my opponents turn, ending my card play loop")
-                card_cycles += 99
-                break
-
-        print("Gone through all cards in hand, so incrementing card_cycles by 1")
-        card_cycles += 1
-        print("Card cycles is now {}/{}".format(card_cycles, MAX_CARD_CYCLES))
-    else:
-        print("Card cycles exceeded clicking next!")
-        leftClick(Cord.next_button)
-
 def turn_phase():
     # Look for a subset of items on the screen now that we already know we are in game
     found_text = []
@@ -589,6 +522,78 @@ def turn_phase():
         return "end turn"
     else: # Assume our turn ended suddenly for some reason
         return "opponents turn"
+    
+def play_attack_phase():
+    # Allow possibly not attacking on a given turn if the randomly generated range is less than ATTACK_PROBABILITY
+    x = randrange(1, 101)
+    if x <= ATTACK_PROBABILITY:
+        leftClick(Cord.resolve_button)
+        time.sleep(1)
+        # In case opponent has a planeswalker, always select the player as the attack target
+        leftClick(Cord.opponent_avatar)
+        leftClick(Cord.resolve_button)
+        
+        # If the opponent has chosen multiple blockers just click the done button
+        found_text = []
+        found_text.append(extract_text(text_loc_dict['order blockers'], BLOCK_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['done'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['first'], BRIGHT_THRESHOLD))
+        if ( ('order blockers' in found_text) or
+                ('done' in found_text) or
+                ('first' in found_text)):
+            print("Detected Block Order, clicking done...")
+            leftClick(Cord.order_blockers_done)
+    else:
+        print("Clicking No Attack Button")
+        leftClick(Cord.no_attacks_button)
+
+def play_my_cards():
+    """Keep trying to play cards from hand, if we have exhausted our cards to play but can attack
+    trigger the attack phase button clicks, else move on.
+    """
+    
+    # Its our turn, reset card cycles and start trying to play cards
+    card_cycles = 1
+    # Loop over our cards MAX_CARD_CYCLES times trying to play cards
+    while(card_cycles <= MAX_CARD_CYCLES):
+
+        print("Beginning play_my_cards phase...")
+
+        # Iterate over possible cards in our hand, this just picks spots on the screen
+        # that may or may not have cards sitting where it clicks.
+        for card in (Cord.cards_in_hand):
+            
+            # If at any time the match has ended, immediately break
+            if (check_in_match() == False):
+                print("in the middle of playing cards but i think the match ended!")
+                break
+            
+            # Determine which phase we are in on our turn
+            phase = turn_phase()
+            if ("play cards" == phase):
+                # Attempt to play a card from our hand
+                doubleLeftClick(card)
+                time.sleep(1)
+                # If playing a card required an action (undo, select card option), check for it
+                # and perform the action to continue game play. 
+                check_if_card_action_and_perform()
+                
+            elif ("attack phase" == phase):
+                play_attack_phase()
+                # Prevent trying to play cards again the next time around and leave this card cycle
+                card_cycles += 99
+                break
+            
+            elif ("opponents turn" == phase):
+                print("Cant play any more cards and cant attack and its auto-moved to my opponents turn, ending my card play loop")
+                card_cycles += 99
+                break
+
+        card_cycles += 1
+        print("Card cycles is now {}/{}".format(card_cycles, MAX_CARD_CYCLES))
+    else:
+        print("Card cycles exceeded clicking next!")
+        leftClick(Cord.next_button)
 
 def match_actions():
     """Main match flow function. We dont leave here until a match has ended.
@@ -610,19 +615,23 @@ def match_actions():
         # See if it's our opponent's turn and keep trying to press the resolve button
         # in the case where they have made an action that requires our response.
         while(check_if_my_turn() == False):
-            # Just keep clicking "next" if we get any prompts
-            leftClick(Cord.next_button)
+            # Double check if its actually our opponents turn
+            # There is a bit of a race condition here were we accidentally
+            # skip our first stage of our turn.
+            if (check_if_my_turn() == False):
+                # Just keep clicking "next" if we get any prompts
+                leftClick(Cord.next_button)
             None
         
         # Now its our turn, determine phase of play
         phase = turn_phase()
         
-        if ('play cards' == phase):            
+        if ("play cards" == phase):            
             # Attempt to play the cards in our hand
             play_my_cards()
-        elif ('attack phase' == phase):
-            leftClick(Cord.next_button)
-        elif ('end turn' == phase):
+        elif ("attack phase" == phase):
+            play_attack_phase()
+        elif ("end turn" == phase):
             leftClick(Cord.next_button)
     else:
         print("Match is over, going back to main loop")
