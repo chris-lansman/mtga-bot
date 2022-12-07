@@ -29,16 +29,10 @@ MAX_CARD_CYCLES = 2                 # Maximum number of times the bot will cycle
 DAILY_FULL_GAMES = 30               # How many full games will be played in a rotation before going to slow play mode
 SECONDS_UNTIL_ROTATION = 43200      # How often the bot will switch from slow play mode (86400 = 1 day, 3600 = 1 hour)
 
-SPEED_PLAY_CARD = 0.5               # Delay between attempting to play a card
-SPEED_DECK_SELECT = 1               # Delay between clicks on deck select screen
-SPEED_OPPONENT_TURN_CLICK = 1       # Delay between clicking Resolve button during opponents turn
-
-SLOW_PLAY_MODE = False              # When True, don't accept draw at Mulligan and don't play (STATIC_CLICK_DRAW_ACCEPT must be False)
 STATIC_CLICK_DRAW_ACCEPT = True     # A fix for difficulty detecting draw accept. Clicks Accept after x seconds delay.
 SLOW_DRAW_bt_play_MULLIGAN_PRESS_DELAY = 10    # Delay before pressing the accept draw button (may not always hit)
 
 CLICKS_DISABLED = False             # Mouse clicks will not register, for testing
-MOUSE_MOVE_DISABLE = False          # Mouse movement will not register, for testing
 
 LOG_LEVEL = logging.INFO
 
