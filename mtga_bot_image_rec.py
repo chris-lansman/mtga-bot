@@ -16,6 +16,9 @@ import win32gui                 # Adjust window sizing
 import pyautogui                # Mouse clicks
 from PIL import ImageGrab, Image, ImageOps, ImageFilter # Capture images, perform image filtering
 import pytesseract              # Text recognition
+import os
+
+home_directory = os.path.expanduser( '~' )
 
 # ----- SETTINGS -----
 # These settings can be used to fine tune how the bot acts. It may be the case that the bot is clicking too fast or slow
@@ -68,13 +71,11 @@ text_loc_dict = {
     "mulligan" :       (714,854,881,893),    # Mulligan button when a match starts
     "no_blocks" :      (1694,928,1864,961),  # No blocks button during a match
     "cancel" :         (1693,925,1865,966), 
-    "attacker" :       (1693,925,1865,966), 
+    "attacker" :       (1722,929,1854,964), 
     "all atta" :       (1693,925,1865,966), 
     "no attacks" :     (1691,865,1861,900), 
     "cancel attacks" : (1667,865,1883,900), 
     "undo_button" :    (1765,739,1812,756), 
-    "caneel" :         (906,856,1020,893),
-    "cancel" :         (906,856,1020,893),
     "last played" :    (1562,203,1746,237),
     "standard play" :  (1635,480,1763,504), # standard  match under table icon match type
     "alchemy play" :   (1635,536,1763,564), # alchemy match under table icon match type
@@ -99,11 +100,18 @@ text_loc_dict = {
     "end turn" :       (1725,977,1820,996), # [FAINT_THRESHOLD]
     "opponent's turn": (1684,931,1861,967), # Finds "opponent's turn in game" [FAINT_THRESHOLD]
     "pass" :           (1735,931,1814,968),  # Finds "pass" in game
-    "resolve" :        (1716,932,1835,965)
+    "resolve" :        (1716,932,1835,965),
+    "click to continue":(856,1023,1067,1056), # Finds "click to continue" when a match ends
+    "defeat" :          (778,492,1141,603),  # Finds "defeat" on results screen
+    "victory" :         (704,491,1212,620),  # Finds 'victory' on the results screen
+    "choose one" :      (802,87,1119,143),   # Finds "choose one" text for a multi-play choice card
+    "done" :            (913,855,1010,892),  # Finds 'done' on order blockers screen
+    "first" :           (543,723,634,768),   # Finds 'first' on order blockers screen
+    "order blockers" :  (758,84,1161,143) # NEEDS A custom THRESHOLD OF 200, its an odd color... 
     }
 FAINT_THRESHOLD = 75    # Used to detect faint text on the screen
 BRIGHT_THRESHOLD = 235  # Used to detect bright text on the screen
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\clansman\AppData\Local\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = home_directory + r'\AppData\Local\Tesseract-OCR\tesseract.exe'
 
 def extract_text(bb_coordinates, threshold=235):
     
@@ -191,6 +199,8 @@ class Cord:
     bot_ply_chk =        (1600,725) # Bot play choice check mark on table screen
     
     # In-game items
+    cancel_button =         (1770,950)
+    done_button =           (963,872)
     keep_draw_button =      (1130, 870)  # Accept drawn cards at start of match
     mulligan_button =       (681,847)    # Mulligan button at start of match when cards are ready to pick
     question_mark_area =    (610,876)    # dark spot next to the question mark icon on the select card screen at start of match
@@ -209,7 +219,6 @@ class Cord:
     card_option_left =      (623,316)
     card_option_left_click = (751,483)
     shield_icon =           (1758,832)
-    cancel_button =         (959,871)
     next_button =           (1780,940)
     sword_icon =            (1726,830)
     block_order =           (1316, 783)
@@ -343,33 +352,6 @@ class Range:
 #TODO Unverified
     block_order = (500, 600)
 
-# This is sketchy update
-def check_if_new_day(start_time_utc):
-    split = (datetime.today()).timestamp()
-
-    print(f"The last mode change was {start_time}")
-    print(f"The current time is {split}")
-    print(f"The difference is {split - start_time} seconds")
-
-    if (split - start_time) > SECONDS_UNTIL_ROTATION:
-        print("It's been longer than a day")
-        global start
-        start = (datetime.today()).timestamp()
-        return True
-    else:
-        print("It hasn't been a day yet")
-        return False
-
-def new_day_actions():
-    global SLOW_PLAY_MODE
-    print(f"SLOW_PLAY_MODE pre function: {SLOW_PLAY_MODE}")
-    if SLOW_PLAY_MODE == False:
-        SLOW_PLAY_MODE = True
-    else:
-        SLOW_PLAY_MODE = False
-
-    print(f"SLOW_PLAY_MODE post function: {SLOW_PLAY_MODE}")
-
 def leftClick(p):
     """Performs a single left click of the mouse at position p
 
@@ -486,19 +468,11 @@ def scan_screen():
     elif (MTGA_USER_NAME in found_text):
         print("In Match")
         return("In Match")
+    elif ( ("defeat" in found_text) or 
+           ("victory" in found_text)):
+        print("match results")
+        return("match results")
     
-    elif check_in_match():
-        print("In Match")
-        return("In Match")
-
-    elif (friends_icon_value in range(Range.friends_icon_match_result[0], Range.friends_icon_match_result[1])):
-        print("On match result screen")
-        return("Match Result")
-    
-    elif friends_icon_value in range(Range.friends_icon_rewards[0], Range.friends_icon_rewards[1]):
-        print("On Rewards Screen")
-        return("Rewards")
-
 
 def click_play():
     """
@@ -514,11 +488,9 @@ def match_result_actions():
     print("Clicking to continue")
     leftClick(Cord.click_to_continue)
 
-
 def rewards_actions():
 
     # Click Start (Claim Prize)
-
     print("Clicking Play (Claim) Button")
     leftClick(Cord.bt_play)
     
@@ -526,7 +498,9 @@ def select_deck_and_play_style(play_style):
     """Selects the table tab, then (play_style) game type
     """
     leftClick(Cord.table_icon_illum)
+    time.sleep(0.1)
     leftClick(Cord.deck_select)
+    time.sleep(0.1)
     leftClick(play_style)
 
 def check_if_my_turn():
@@ -542,7 +516,8 @@ def check_if_my_turn():
     found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))
     found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
     found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
-    
+    found_text.append(extract_text(text_loc_dict['cancel attacks'], FAINT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
     # Possible text states on screen:
     # During out turn:
         # 'next' + 'to combat'
@@ -560,9 +535,11 @@ def check_if_my_turn():
     if ( (('next' in found_text) and ('to combat' in found_text)) or
          (('no attacks' in found_text) and ('all attack' in found_text)) or
          (('attacker' in found_text) and ('to blockers' in found_text)) or
+         (('cancel attacks' in found_text) and ('to blockers' in found_text)) or
          (('next' in found_text) and ('to blockers' in found_text)) or
          (('next' in found_text) and ('to damage' in found_text)) or
-         (('next' in found_text) and ('to end' in found_text))):
+         (('next' in found_text) and ('to end' in found_text)) or
+         (('cancel' in found_text))):
         print("*** MY TURN ***")
         return True
     else:
@@ -571,63 +548,70 @@ def check_if_my_turn():
 
 
 def check_in_match():
-    """Check the color of the friends icon in the lower left of the screen.
-    During a match it will be brighter than when the match is over.
 
-    Returns:
-        True/False: if we are in a match or not
-    """
+    # If we are in match only certain text will be on the screen, check for that
+    # MTGA_USER_NAME, mulligan, keep, next, pass, no block, no attack, all attack, 
+    global MTGA_USER_NAME
     
-    in_match_friend_icon_value = get_grey_scale_sum(Zone.friends_icon)
-    home_tab_value =             get_grey_scale_sum(Zone.home_tab_main)
-
-    if (in_match_friend_icon_value in range(Range.friends_icon_in_match[0], Range.friends_icon_in_match[1]) and
-         (home_tab_value not in range(Range.home_tab_main[0], Range.home_tab_main[1]))):
-        return True
-    else:
+    check_mtga_window_size()
+    # Look for a subset of items on the screen now that we already know we are in game
+    found_text = []
+    # found_text.append(extract_text(text_loc_dict['next'], BRIGHT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['to combat'], FAINT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['no attacks'], BRIGHT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['attacker'], BRIGHT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['all atta'], BRIGHT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['keep'], BRIGHT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['mulligan'], BRIGHT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict[MTGA_USER_NAME], BRIGHT_THRESHOLD))
+    # found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['defeat'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['victory'], BRIGHT_THRESHOLD))
+                                                 
+    # if ( ('next' in found_text) or 
+    #      ('to combat' in found_text) or
+    #      ('no attacks' in found_text) or
+    #      ('attacker' in found_text) or
+    #      ('all atta' in found_text) or
+    #      ('to blockers' in found_text) or
+    #      ('to damage' in found_text) or
+    #      ('to end' in found_text) or
+    #      ('keep' in found_text) or
+    #      ('mulligan' in found_text) or
+    #      (MTGA_USER_NAME in found_text) or
+    #      ('cancel' in found_text)):
+    #     return True
+    if ( ('defeat' in found_text) or
+         ('victory' in found_text)):
         return False
-
-def check_if_in_combat_phase():
-    
-    shield_icon_value =      get_grey_scale_sum(Zone.shield_icon)
-    sword_icon_value =       get_grey_scale_sum(Zone.sword_icon)
-    no_attack_button_value = get_grey_scale_sum(Zone.no_attacks_button)
-    p1_main_phase_grayscale = get_grey_scale_sum(Zone.p1_main_phase)
-    
-    if ( ((shield_icon_value in range(Range.combat_shield_icon[0], Range.combat_shield_icon[1])) and
-            ((p1_main_phase_grayscale not in range(Range.p1_main_phase[0], Range.p1_main_phase[1])))) or
-           ( (sword_icon_value in range(Range.sword_icon[0], Range.sword_icon[1])) and
-             (no_attack_button_value in range(Range.no_attacks_button[0], Range.no_attacks_button[1])) and
-             ((p1_main_phase_grayscale not in range(Range.p1_main_phase[0], Range.p1_main_phase[1]))))):
-        print("Confirmed combat phase")
-        return True
     else:
-        return False
+        return True
     
 def check_if_card_action_and_perform():
     
-    # Now that we may or may not have played a card, check for a number of possible
-    # game states, i.e. cant play the card (undo)or  card has two choices when played 
-    # and I can play it (click the left option), or I cant (click undo). This does not
-    # support playing the right choice if there are two so dont make decks that expect it.
-    undo_button_value =          get_grey_scale_sum(Zone.undo_button)
-    card_has_play_option_value = get_grey_scale_sum(Zone.card_has_play_option)
-    next_button_value =          get_grey_scale_sum(Zone.next_button)
-    cancel_button_value =        get_grey_scale_sum(Zone.cancel_button)
-    # First check if the card cant be played due to the mana cost being more than we have on the board
-    if (undo_button_value in range(Range.undo_button[0], Range.undo_button[1])):
-        print("Detected Undo button, so pressing it...")
-        leftClick(Cord.undo_button)
-    # Check if the card played has an option to play it two ways, and if the left option is glowing
-    elif (card_has_play_option_value in range(Range.choose_one_option[0], Range.choose_one_option[1])):
-        print("Card had choose one option value! Clicking the left option")
+    found_text = []
+    found_text.append(extract_text(text_loc_dict['choose one'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
+    
+    # Three possible paths when playing cards:
+        # If the card could not be played the cancel button will be on screen.
+        # If the card had a multiple choice we first address that and then re-evaluate.
+        # Else the card played and we do nothing and move on
+    if (('cancel' in found_text)):
+            leftClick(Cord.cancel_button)
+    elif (('choose one' in found_text)):
+        # Regardless if we can play the card or not just click the left option
+        # If it doesn't play we will be prompted with the cancel button
         leftClick(Cord.card_option_left_click)
-    # Check if the card played has an option to play it two ways, and if the left option is NOT glowing
-    elif (card_has_play_option_value not in range(Range.choose_one_option[0], Range.choose_one_option[1]) and
-            (next_button_value not in range(Range.next_button[0], Range.next_button[1])) and
-            (cancel_button_value in range(Range.cancel_button[0], Range.cancel_button[1]))):
-        print("Card had choose one option value! But I can't play it, click cancel")
-        leftClick(Cord.cancel_button)
+        time.sleep(1)
+        # Now check for the cancel button, if its there we could not play the card so 
+        # click cancel and move on, if not the card played and do nothing.
+        found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
+        if (('cancel' in found_text)):
+            leftClick(Cord.cancel_button)
 
 def check_if_my_card_draw_done():
     """Check if its our turn to draw cards or we detected we are returning to a 
@@ -639,7 +623,10 @@ def check_if_my_card_draw_done():
     check_mtga_window_size()
     
     # Lets see what we find on the screen
-    found_text = scan_screen_for_text()
+    found_text = []
+    found_text.append(extract_text(text_loc_dict['keep'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['mulligan'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['view battlefield'], BRIGHT_THRESHOLD))
     
     if ( ("keep" in found_text) or
          ("mulligan" in found_text)):
@@ -649,6 +636,9 @@ def check_if_my_card_draw_done():
     elif ("view battlefield" in found_text):
         print("Waiting to pick our cards")
         return False
+    else: 
+        print("Assuming we are returning to an in-progress match")
+        return True
 
 def play_my_cards():
     """Keep trying to play cards from hand, if we have exhausted our cards to play but can attack
@@ -667,12 +657,22 @@ def play_my_cards():
         for card in (Cord.cards_in_hand):
             
             # If at any time the match has ended, immediately break
-            if check_in_match() == False:
+            if (check_in_match() == False):
+                print("in the middle of playing cards but i think the match ended!")
                 break
             
             # See if we have entered the combat phase, i.e. we have no cards left to play
             # and there is a creature on the board who can attack
-            if (check_if_in_combat_phase() == True):
+            phase = turn_phase()
+            if ("play cards" == phase):
+                # Attempt to play a card from our hand
+                doubleLeftClick(card)
+                time.sleep(1)
+                # If playing a card required an action (undo, select card option), check for it
+                # and perform the action to continue game play. 
+                check_if_card_action_and_perform()
+                
+            elif ("attack phase" == phase):
                 # Allow possibly not attacking on a given turn if the randomly generated range is less than ATTACK_PROBABILITY
                 x = randrange(1, 101)
                 if x <= ATTACK_PROBABILITY:
@@ -693,24 +693,18 @@ def play_my_cards():
                 # Prevent trying to play cards again the next time around and leave this card cycle
                 card_cycles += 99
                 break
-
-            elif (check_if_my_turn() == False):
+            
+            elif ("opponents turn" == phase):
                 print("Cant play any more cards and cant attack and its auto-moved to my opponents turn, ending my card play loop")
                 card_cycles += 99
                 break
 
-            # Attempt to play a card from our hand
-            time.sleep(SPEED_PLAY_CARD)
-            doubleLeftClick(card)
-            time.sleep(1)
-            
-            # If playing a card required an action (undo, select card option), check for it
-            # and perform the action to continue game play. 
-            check_if_card_action_and_perform()
-
         print("Gone through all cards in hand, so incrementing card_cycles by 1")
         card_cycles += 1
         print("Card cycles is now {}/{}".format(card_cycles, MAX_CARD_CYCLES))
+    else:
+        print("Card cycles exceeded clicking next!")
+        leftClick(Cord.next_button)
 
 def turn_phase():
     # Look for a subset of items on the screen now that we already know we are in game
@@ -724,6 +718,7 @@ def turn_phase():
     found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))
     found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
     found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
     
     # Possible text states on screen:
     # During out turn:
@@ -733,7 +728,10 @@ def turn_phase():
         # 'next' + 'to blockers'
         # 'next' + 'to damage'
         # 'next' + 'to end'
+
     if (('next' in found_text) and ('to combat' in found_text)):
+        return "play cards"
+    elif (('cancel' in found_text)):
         return "play cards"
     elif (('no attacks' in found_text) and ('all attack' in found_text)):
         return "attack phase"
@@ -745,11 +743,12 @@ def turn_phase():
         return "attack phase"
     elif (('next' in found_text) and ('to end' in found_text)):
         return "end turn"
+    else: # Assume our turn ended suddenly for some reason
+        return "opponents turn"
 
 def match_actions():
     """Main match flow function. We dont leave here until a match has ended.
     """
-    global GAME_COUNT
     print("Starting match_actions...")
 
     # Keep looping until we have drawn our cards or determined we are returning to an in progress game.
@@ -767,6 +766,8 @@ def match_actions():
         # See if it's our opponent's turn and keep trying to press the resolve button
         # in the case where they have made an action that requires our response.
         while(check_if_my_turn() == False):
+            # Just keep clicking "next" if we get any prompts
+            leftClick(Cord.next_button)
             None
         
         # Now its our turn, determine phase of play
@@ -779,10 +780,6 @@ def match_actions():
             leftClick(Cord.next_button)
         elif ('end turn' == phase):
             leftClick(Cord.next_button)
-
-        print("Should have completed all card_cycles, so now clicking resolve_button")
-        leftClick(Cord.resolve_button)
-
     else:
         print("Match is over, going back to main loop")
 
@@ -804,25 +801,13 @@ while True:
         click_play()
 
     elif (screen == "In Match"):
-        if (SLOW_PLAY_MODE and not STATIC_CLICK_DRAW_ACCEPT):
-            pass
-            if check_if_new_day(start_time_utc):
-                SLOW_PLAY_MODE = False
-        else:
-            match_actions()
-            GAME_COUNT += 1
-            logger.info(f"Incremented GAME_COUNT to {GAME_COUNT}/{DAILY_FULL_GAMES}")
-            if GAME_COUNT >= DAILY_FULL_GAMES:
-                SLOW_PLAY_MODE = True
-                GAME_COUNT = 0
+        match_actions()
 
-    elif screen == "Match Result":
+    elif screen == "match results":
         logger.info("Match end")
         match_result_actions()
 
     elif screen == "Rewards":
         rewards_actions()
-
-    print(f"***** GAME COUNT: {GAME_COUNT} / {DAILY_FULL_GAMES} ***** SLOW MODE: {SLOW_PLAY_MODE} *****")
 
     time.sleep(1)
