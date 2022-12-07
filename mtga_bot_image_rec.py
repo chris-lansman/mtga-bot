@@ -13,6 +13,7 @@ import pyautogui                # Mouse clicks
 from PIL import ImageGrab, Image, ImageOps, ImageFilter # Capture images, perform image filtering
 import pytesseract              # Text recognition
 import os
+import re
 
 # SET THIS TO YOUR USERNAME
 MTGA_USER_NAME = "chriscas"         # Enter your MTGA username so text recognition can sort out when you are in a match
@@ -67,7 +68,7 @@ text_loc_dict = {
     "no_blocks" :      (1694,928,1864,961),   # No blocks button during a match
     "cancel" :         (1693,925,1865,966), 
     "attacker" :       (1722,929,1854,964), 
-    "all atta" :       (1693,925,1865,966), 
+    "all attack" :       (1695,928,1850,960), 
     "no attacks" :     (1691,865,1861,900), 
     "cancel attacks" : (1667,865,1883,900), 
     "undo_button" :    (1765,739,1812,756), 
@@ -81,12 +82,12 @@ text_loc_dict = {
     "ranked" :         (1563,205,1681,237),   # Ranked under table icon match type
     "brawl" :          (1563,205,1681,237),   # Brawl under table icon match type
     "view battlefield":(1590,100,1800,140),
-    "next" :           (1735,931,1814,968),
+    "next" :           (1740,934,1810,960),   # Find 'next' button in combat
     "end turn" :       (1705,930,1845,966),
     "pass" :           (1740,930,1808,962),   # Finds "pass" on opponents turn
     "no blocks" :      (1700,929,1849,963),   # Finds "no blocks" in game
     "my turn" :        (1710,929,1837,965),   # Finds "my turn" in game
-    "to combat" :      (1725,977,1820,996),   # [FAINT_THRESHOLD]
+    "to combat" :      (1730,979,1818,996),   # [FAINT_THRESHOLD]
     "to end" :         (1725,977,1820,996),   # [FAINT_THRESHOLD]
     "to blockers" :    (1725,977,1820,996),   # [FAINT_THRESHOLD]
     "to damage" :    (1725,977,1820,996),     # [FAINT_THRESHOLD]
@@ -101,10 +102,11 @@ text_loc_dict = {
     "choose one" :      (802,87,1119,143),    # Finds "choose one" text for a multi-play choice card
     "done" :            (913,855,1010,892),   # Finds 'done' on order blockers screen
     "first" :           (543,723,634,768),    # Finds 'first' on order blockers screen
-    "order blockers" :  (758,84,1161,143)     # NEEDS A custom THRESHOLD OF 200, its an odd color... 
+    "order blockers" :  (758,84,1161,143),    # NEEDS A custom THRESHOLD OF 200, its an odd color... 
+    "click to continue":(855,1022,1062,1055)  # [FAINT_THRESHOLD]
     }
 FAINT_THRESHOLD =   75  # Used to detect faint text on the screen
-BRIGHT_THRESHOLD = 235  # Used to detect bright text on the screen
+BRIGHT_THRESHOLD = 238  # Used to detect bright text on the screen
 BLOCK_THRESHOLD =  200  # Used on the order blocker screen as the text is slightly greyed out
 
 
@@ -129,44 +131,13 @@ def extract_text(bb_coordinates, threshold=235):
             #if intensity greater than threshold, assign white 
             else:
                 img.putpixel((x,y),0)
+    img = img.filter(ImageFilter.SMOOTH)
+    img = img.filter(ImageFilter.EDGE_ENHANCE)
     img.save("capture.jpg")
     img = Image.open("capture.jpg")
     text = pytesseract.image_to_string(img, lang='eng', config='--psm 12 --oem 3')
-    return text.lower().strip()
+    return re.sub(r'[^A-Za-z0-9 ]+', '', text.lower().strip())
 
-
-def scan_screen_for_text(items_to_scan=text_loc_dict):
-    
-    # items_to_scan - dictionary of the items we want to look for
-    
-    text_found = []
-    # Look over the screen and see if we find anything we know about
-    for key, bb_values in items_to_scan.items():
-        img = ImageGrab.grab(bb_values)
-        img = ImageOps.grayscale(img)   
-        img = img.filter(ImageFilter.SMOOTH)
-        img = img.filter(ImageFilter.EDGE_ENHANCE)
-        img = img.convert('L')    
-        # Invert pixels since text is white on the screen
-        # This will leave you with black text and a white background 
-        # which pytesseract does a better job with
-        width, height = img.size
-        for x in range(width):
-            for y in range(height):
-                #if intensity less than threshold, assign black
-                if img.getpixel((x,y)) < 235:
-                    img.putpixel((x,y),255)
-                #if intensity greater than threshold, assign white 
-                else:
-                    img.putpixel((x,y),0)
-        img.save("capture.jpg")
-        img = Image.open("capture.jpg")
-        text = pytesseract.image_to_string(img, lang='eng', config='--psm 12 --oem 3')
-        # Only add text to our text_found list if we match a known text value
-        if key in text.lower().strip():
-            print(f"{key}: {text.lower().strip()}")
-            text_found.append(key)
-    return text_found
 
 class Cord:
 
@@ -276,49 +247,69 @@ def check_mtga_window_size():
         # Verify the coordinates are at (0,0,1920,1080)
         
 
-def scan_screen():
-
-    # Search for text on the screen to determine where we are... 
-    found_text = scan_screen_for_text()
+def scan_screen_for_text():
+    """This method has no idea where we are in the game so it looks for
+    any possible combinations of places we could be. The frist one that
+    matches we tell the calling code and exit.
     
-    # The main screen when the game first starts and the sub-main after you click the play button once are
-    # fairly difficult to tell apart, not too many things change between the two. Lets try and solve for
-    # the main screen when the game starts or you end a match
-    if ( ("play" in found_text) and 
-         ("last played" not in found_text) and
-         ("standard play" not in found_text)):
+    The found_text checks were broken up to speed up the call to this method.
+    Calls to pytesseract are very costly time wise.
+    """
+
+    found_text = []
+    found_text.append(extract_text(text_loc_dict['play'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['last played'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['standard play'], BRIGHT_THRESHOLD))
+    if ( ('play' in found_text) and 
+         ('last played' not in found_text) and
+         ('standard play' not in found_text)):
         print("On start screen with Play button")
         return("Start")
-    elif ( ("home" in found_text) and 
-         ("last played" in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['home'], BRIGHT_THRESHOLD))
+    if ( ('home' in found_text) and 
+         ('last played' in found_text)):
         print("On sub-main screen last played")
         return("Deck Select")
-    elif ( ("home" in found_text) and 
-         ("standard play" in found_text) or
-         ("alchemy play" in found_text) or
-         ("historic play" in found_text) or
-         ("explorer play" in found_text) or
-         ("bot match" in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['standard play'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['alchemy play'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['historic play'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['explorer play'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['bot match'], BRIGHT_THRESHOLD))
+    if ( ('home' in found_text) and 
+         ('standard play' in found_text) or
+         ('alchemy play' in found_text) or
+         ('historic play' in found_text) or
+         ('explorer play' in found_text) or
+         ('bot match' in found_text)):
         print("On sub-main screen table tab")
         return("Deck Select")
-    elif ( ("keep"in found_text) or
-           ("mulligan" in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['keep'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['mulligan'], BRIGHT_THRESHOLD))
+    
+    if ( ('keep' in found_text) or
+         ('mulligan' in found_text)):
         print("In Match")
         return("In Match")
-    elif (MTGA_USER_NAME in found_text):
+    
+    found_text.append(extract_text(text_loc_dict[MTGA_USER_NAME], BRIGHT_THRESHOLD))
+    if (MTGA_USER_NAME in found_text):
         print("In Match")
         return("In Match")
-    elif ( ("defeat" in found_text) or 
-           ("victory" in found_text)):
+    
+    
+    found_text.append(extract_text(text_loc_dict['defeat'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['victory'], BRIGHT_THRESHOLD))                                            
+    if ( ('defeat' in found_text) or
+         ('victory' in found_text)):
         print("match results")
         return("match results")
     
 
 def click_play():
-    """
-    Click the "Play" button and then click the 'Table' icon so we can get our game\n
-    into a known state before we get going.
-    """
+
     print("Clicking Play Button")
     leftClick(Cord.play_button)
 
@@ -338,9 +329,9 @@ def select_deck_and_play_style(play_style):
     """Selects the table tab, then (play_style) game type
     """
     leftClick(Cord.table_icon_illum)
-    time.sleep(0.1)
+    time.sleep(0.25)
     leftClick(Cord.deck_select)
-    time.sleep(0.1)
+    time.sleep(0.25)
     leftClick(play_style)
 
 def check_if_my_turn():
@@ -348,16 +339,7 @@ def check_if_my_turn():
     check_mtga_window_size()
     # Look for a subset of items on the screen now that we already know we are in game
     found_text = []
-    found_text.append(extract_text(text_loc_dict['next'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to combat'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['no attacks'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['attacker'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['all atta'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['cancel attacks'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
+
     # Possible text states on screen:
     # During out turn:
         # 'next' + 'to combat'
@@ -372,20 +354,52 @@ def check_if_my_turn():
         # 'pass' + 'to blockers'
         # 'pass' + 'to damage'
         # 'my turn' + 'end turn'
-    if ( (('next' in found_text) and ('to combat' in found_text)) or
-         (('no attacks' in found_text) and ('all attack' in found_text)) or
-         (('attacker' in found_text) and ('to blockers' in found_text)) or
-         (('cancel attacks' in found_text) and ('to blockers' in found_text)) or
-         (('next' in found_text) and ('to blockers' in found_text)) or
-         (('next' in found_text) and ('to damage' in found_text)) or
-         (('next' in found_text) and ('to end' in found_text)) or
-         (('cancel' in found_text))):
+    # NOTE: 
+    # There are times were the 'to' in 'to xxxx' cant be found so we just look
+    # for the second part of the phrase ex) instead of 'to block' just 'block'
+    # TODO WHY IS THIS NOT FINDING COMBAT!?!?!
+    found_text.append(extract_text(text_loc_dict['next'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['to combat'], FAINT_THRESHOLD))
+    if (('next' in found_text) and ('combat' in found_text)):
         print("*** MY TURN ***")
         return True
-    else:
-        print("*** OPPONENTS TURN ***")
-        return False
-
+    
+    found_text.append(extract_text(text_loc_dict['no attacks'], BRIGHT_THRESHOLD))    
+    found_text.append(extract_text(text_loc_dict['all attack'], BRIGHT_THRESHOLD))
+    if (('no attacks' in found_text) and ('all attack' in found_text)):
+        print("*** MY TURN ***")
+        return True
+    
+    found_text.append(extract_text(text_loc_dict['attacker'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))    
+    if ( (('attacker' in found_text) and ('to blockers' in found_text)) or
+         (('next' in found_text) and ('blockers' in found_text)) ):
+        print("*** MY TURN ***")
+        return True
+    
+    found_text.append(extract_text(text_loc_dict['cancel attacks'], FAINT_THRESHOLD))
+    if (('cancel attacks' in found_text) and ('blockers' in found_text)):
+        print("*** MY TURN ***")
+        return True
+         
+    found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
+    if (('next' in found_text) and ('damage' in found_text)):
+        print("*** MY TURN ***")
+        return True
+    
+    found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
+    if (('next' in found_text) and ('end' in found_text)):
+        print("*** MY TURN ***")
+        return True
+         
+    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
+    if (('cancel' in found_text)):
+        print("*** MY TURN ***")
+        return True
+    
+    # If none of the above were found then its our opponents turn
+    print("*** OPPONENTS TURN ***")
+    return False
 
 def check_in_match():
 
@@ -399,62 +413,41 @@ def check_in_match():
     check_mtga_window_size()
     # Look for a subset of items on the screen now that we already know we are in game
     found_text = []
-    # found_text.append(extract_text(text_loc_dict['next'], BRIGHT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['to combat'], FAINT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['no attacks'], BRIGHT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['attacker'], BRIGHT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['all atta'], BRIGHT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['keep'], BRIGHT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['mulligan'], BRIGHT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict[MTGA_USER_NAME], BRIGHT_THRESHOLD))
-    # found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['defeat'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['victory'], BRIGHT_THRESHOLD))
-                                                 
-    # if ( ('next' in found_text) or 
-    #      ('to combat' in found_text) or
-    #      ('no attacks' in found_text) or
-    #      ('attacker' in found_text) or
-    #      ('all atta' in found_text) or
-    #      ('to blockers' in found_text) or
-    #      ('to damage' in found_text) or
-    #      ('to end' in found_text) or
-    #      ('keep' in found_text) or
-    #      ('mulligan' in found_text) or
-    #      (MTGA_USER_NAME in found_text) or
-    #      ('cancel' in found_text)):
-    #     return True
-    if ( ('defeat' in found_text) or
-         ('victory' in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['click to continue'], FAINT_THRESHOLD))                                           
+    if ('click to continue' in found_text):
         return False
     else:
         return True
     
 def check_if_card_action_and_perform():
     
-    found_text = []
-    found_text.append(extract_text(text_loc_dict['choose one'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
-    
     # Three possible paths when playing cards:
         # If the card could not be played the cancel button will be on screen.
         # If the card had a multiple choice we first address that and then re-evaluate.
         # Else the card played and we do nothing and move on
+    
+    found_text = []
+        
+    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
     if (('cancel' in found_text)):
             leftClick(Cord.cancel_button)
-    elif (('choose one' in found_text)):
+            return True
+        
+    found_text.append(extract_text(text_loc_dict['choose one'], BRIGHT_THRESHOLD))
+    if (('choose one' in found_text)):
         # Regardless if we can play the card or not just click the left option
         # If it doesn't play we will be prompted with the cancel button
         leftClick(Cord.card_option_left_click)
-        time.sleep(1)
+        time.sleep(0.5)
         # Now check for the cancel button, if its there we could not play the card so 
         # click cancel and move on, if not the card played and do nothing.
         found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
         if (('cancel' in found_text)):
             leftClick(Cord.cancel_button)
+            return True
+    
+    return False
 
 def check_if_my_card_draw_done():
     """Check if its our turn to draw cards or we detected we are returning to a 
@@ -484,18 +477,6 @@ def check_if_my_card_draw_done():
         return True
 
 def turn_phase():
-    # Look for a subset of items on the screen now that we already know we are in game
-    found_text = []
-    found_text.append(extract_text(text_loc_dict['resolve'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['next'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to combat'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['no attacks'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['attacker'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['all atta'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
     
     # Possible text states on screen:
     # During out turn:
@@ -505,30 +486,55 @@ def turn_phase():
         # 'next' + 'to blockers'
         # 'next' + 'to damage'
         # 'next' + 'to end'
+    # Look for a subset of items on the screen now that we already know we are in game
+    found_text = []
+    #found_text.append(extract_text(text_loc_dict['resolve'], BRIGHT_THRESHOLD))
 
-    if (('next' in found_text) and ('to combat' in found_text)):
+    # NOTE: 
+    # There are times were the 'to' in 'to xxxx' cant be found so we just look
+    # for the second part of the phrase ex) instead of 'to block' just 'block'
+    
+    found_text.append(extract_text(text_loc_dict['next'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['to combat'], FAINT_THRESHOLD))
+    if (('next' in found_text) and ('combat' in found_text)):
         return "play cards"
-    elif (('cancel' in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['cancel'], BRIGHT_THRESHOLD))
+    if (('cancel' in found_text)):
         return "play cards"
-    elif (('no attacks' in found_text) and ('all attack' in found_text)):
+    
+    # found_text.append(extract_text(text_loc_dict['choose one'], BRIGHT_THRESHOLD))
+    # if (('choose one' in found_text)):
+    #     return "play cards"
+    
+    found_text.append(extract_text(text_loc_dict['no attacks'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['all attack'], BRIGHT_THRESHOLD))
+    if (('no attacks' in found_text) and ('all attack' in found_text)):
         return "attack phase"
-    elif (('attacker' in found_text) and ('to blockers' in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['attacker'], BRIGHT_THRESHOLD))
+    found_text.append(extract_text(text_loc_dict['to blockers'], FAINT_THRESHOLD))
+    if ( (('attacker' in found_text) and ('to blockers' in found_text)) or
+         (('next' in found_text) and ('blockers' in found_text)) ):
         return "attack phase"
-    elif (('next' in found_text) and ('to blockers' in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['to damage'], FAINT_THRESHOLD))
+    if (('next' in found_text) and ('damage' in found_text)):
         return "attack phase"
-    elif (('next' in found_text) and ('to damage' in found_text)):
-        return "attack phase"
-    elif (('next' in found_text) and ('to end' in found_text)):
+    
+    found_text.append(extract_text(text_loc_dict['to end'], FAINT_THRESHOLD))
+    if (('next' in found_text) and ('end' in found_text)):
         return "end turn"
-    else: # Assume our turn ended suddenly for some reason
-        return "opponents turn"
+    
+    # Assume our turn ended suddenly for some reason
+    return "opponents turn"
     
 def play_attack_phase():
     # Allow possibly not attacking on a given turn if the randomly generated range is less than ATTACK_PROBABILITY
     x = randrange(1, 101)
     if x <= ATTACK_PROBABILITY:
         leftClick(Cord.resolve_button)
-        time.sleep(1)
+        time.sleep(0.5)
         # In case opponent has a planeswalker, always select the player as the attack target
         leftClick(Cord.opponent_avatar)
         leftClick(Cord.resolve_button)
@@ -554,10 +560,15 @@ def play_my_cards():
     
     # Its our turn, reset card cycles and start trying to play cards
     card_cycles = 1
+    
     # Loop over our cards MAX_CARD_CYCLES times trying to play cards
     while(card_cycles <= MAX_CARD_CYCLES):
 
         print("Beginning play_my_cards phase...")
+        
+        # Keep track of times we hit cancel, if we hit it 0 times in a given
+        # play through dont bother playing a second time through 
+        cancel_count = 0
 
         # Iterate over possible cards in our hand, this just picks spots on the screen
         # that may or may not have cards sitting where it clicks.
@@ -566,21 +577,21 @@ def play_my_cards():
             # If at any time the match has ended, immediately break
             if (check_in_match() == False):
                 print("in the middle of playing cards but i think the match ended!")
-                break
             
             # Determine which phase we are in on our turn
             phase = turn_phase()
             if ("play cards" == phase):
                 # Attempt to play a card from our hand
                 doubleLeftClick(card)
-                time.sleep(1)
+                time.sleep(0.25)
                 # If playing a card required an action (undo, select card option), check for it
                 # and perform the action to continue game play. 
-                check_if_card_action_and_perform()
-                
+                if (check_if_card_action_and_perform()):
+                    cancel_count += 1
+                    
             elif ("attack phase" == phase):
                 play_attack_phase()
-                # Prevent trying to play cards again the next time around and leave this card cycle
+                # Our turn is done, trigger leaving the card play loop
                 card_cycles += 99
                 break
             
@@ -589,8 +600,13 @@ def play_my_cards():
                 card_cycles += 99
                 break
 
-        card_cycles += 1
-        print("Card cycles is now {}/{}".format(card_cycles, MAX_CARD_CYCLES))
+        # This is an attempt at speeding up the card play logic.
+        # No cards were played this pass so none will be played next pass, exit loop
+        if (0 != cancel_count):
+            card_cycles += 1
+            print("Card cycles is now {}/{}".format(card_cycles, MAX_CARD_CYCLES))
+        else:
+            card_cycles += 99
     else:
         print("Card cycles exceeded clicking next!")
         leftClick(Cord.next_button)
@@ -644,9 +660,9 @@ logger.info("*** Started mgta_bot ***")
 while True:
     # Verify the window is properly sized and its position on the screen is correct
     check_mtga_window_size()
+    
     # We have no idea where we are, look for text all over the place
-    # TODO see if there is a way to speed this up
-    screen = scan_screen()
+    screen = scan_screen_for_text()
     
     if screen == "Start":
         click_play()
