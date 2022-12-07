@@ -109,8 +109,9 @@ text_loc_dict = {
     "first" :           (543,723,634,768),   # Finds 'first' on order blockers screen
     "order blockers" :  (758,84,1161,143) # NEEDS A custom THRESHOLD OF 200, its an odd color... 
     }
-FAINT_THRESHOLD = 75    # Used to detect faint text on the screen
+FAINT_THRESHOLD =   75  # Used to detect faint text on the screen
 BRIGHT_THRESHOLD = 235  # Used to detect bright text on the screen
+BLOCK_THRESHOLD =  200  # Used on the order blocker screen as the text is slightly greyed out
 pytesseract.pytesseract.tesseract_cmd = home_directory + r'\AppData\Local\Tesseract-OCR\tesseract.exe'
 
 def extract_text(bb_coordinates, threshold=235):
@@ -240,118 +241,6 @@ class Cord:
                      (1550,1050), 
                      (360,1050))
 
-class Zone:
-    """
-    Maintain co-ordinates of zones/boxes that will be analyzed for grayscale value
-    """
-    # Define bounding box sizes in pixel offsets (i.e. a 5 means 5x5 pixels)
-    BB_2X2 = 2
-    BB_5X5 = 5
-    BB_10x10 = 10
-        
-    def create_bb(m_pt, bb_size):
-        """Returns a bounding box given a current x,y coordinate
-
-        Args:
-            m_pt (x,y): coordinate on the screen
-            bb_size (int): size in pixels of a bounding box
-
-        Returns:
-            tuple: bounding box coordinates (upper left x, upper left y, lower right x, lower right y)
-        """
-        return (m_pt[0], 
-                m_pt[1], 
-                m_pt[0]+bb_size, 
-                m_pt[1]+bb_size)
-    # Pre-match items
-    play_button_edge = create_bb(Cord.play_button_edge, BB_5X5)      # Main screen play button
-    edit_deck_button = create_bb(Cord.edit_deck, BB_5X5)        # After you press play on the main screen the edit button shows
-    table_button =     create_bb(Cord.table_icon_illum, BB_2X2) # After you press play on the main screen the table icon shows
-    favorite_button =  create_bb(Cord.recently_played, BB_2X2)  # After you press play on the main screen the recently played button
-    gold_coins =       create_bb(Cord.gold_coins, BB_2X2)       # Gold coins found before you start a match
-    gems =             create_bb(Cord.gems, BB_2X2)             # gems found before you start a match
-    home_tab_main =    create_bb(Cord.home_tab_main, BB_5X5)    # Home tab on the upper left on the main screen
-
-    # Modes
-    standard_play = create_bb(Cord.std_ply_chk, BB_2X2)
-    alchemy_play =  create_bb(Cord.alc_ply_chk, BB_2X2)
-    historic_play = create_bb(Cord.his_ply_chk, BB_2X2)
-    explorer_play = create_bb(Cord.exp_ply_chk, BB_2X2)
-    bot_play =      create_bb(Cord.bot_ply_chk, BB_2X2)
-    
-    # Empty area on the left side of the screen on the sub-main screen
-    sub_screen_empty_pt1 = create_bb(Cord.sub_screen_empty_pt1, BB_5X5)
-    sub_screen_empty_pt2 = create_bb(Cord.sub_screen_empty_pt2, BB_5X5)
-    sub_screen_empty_pt3 = create_bb(Cord.sub_screen_empty_pt3, BB_5X5)
-    sub_screen_empty_pt4 = create_bb(Cord.sub_screen_empty_pt4, BB_5X5)
-    
-    # In-game items
-    keep_draw_button =      create_bb(Cord.keep_draw_button, BB_5X5)
-    mulligan_button =       create_bb(Cord.mulligan_button, BB_5X5)
-    question_mark_area =    create_bb(Cord.question_mark_area, BB_5X5) 
-    friends_icon =          create_bb(Cord.friends_icon, BB_2X2)
-    opponent_avatar =       create_bb(Cord.opponent_avatar, BB_5X5)
-    next_button =           create_bb(Cord.next_button, BB_5X5)
-    cancel_button =         create_bb(Cord.cancel_button, BB_5X5)
-    no_attacks_button =     create_bb(Cord.no_attacks_button, BB_5X5)
-    blocking_shield =       create_bb(Cord.blocking_shield, BB_5X5)
-    
-    # End-game items
-    
-    # In-match items
-    undo_button = create_bb(Cord.undo_button, BB_5X5)
-    p1_main_phase = create_bb(Cord.p1_main_phase, BB_5X5)       # Main phase icon, indicating your turn, or not first main
-    p1_second_phase = create_bb(Cord.p1_second_phase, BB_5X5)   # Second phase icon
-    p2_main_phase = create_bb(Cord.p2_main_phase, BB_5X5)       # Opponent Main phase icon
-    p2_second_phase = create_bb(Cord.p2_second_phase, BB_5X5)   # Opponent Second phase icon
-    card_has_play_option = create_bb(Cord.card_option_left, BB_2X2) # Some cards have two play options, this is the left option corner that glows
-    shield_icon = create_bb(Cord.shield_icon, BB_5X5)           # Shield icon, black when having to choose No/All Attack
-    sword_icon =  create_bb(Cord.sword_icon, BB_2X2)
-    
-    #Not verified
-    block_order = create_bb(Cord.block_order, BB_2X2)
-
-class Range:
-    """
-    Range of grey scale intensity values that a Zone should fall within to trigger a positive match\n
-    Any (0, 0) values below need to be amended with the correct range
-    
-    """
-    play_button_edge = (1500,3000)  # Range if the button is present
-    edit_deck_button = (500,800)   # If we are on the main screen the intensity should be < 500, else we have the button there
-    gold_coins =       (500,700)
-    gems =             (600,700)
-    recently_played =  (200,300)    # Recently played button on screen after main screen
-    table_icon_illum = (200,300) # Table button on screen after main screen
-    play_style_illum = (200,600)
-    sub_screen_empty_pt = (0,50) # Should be nearly black if we are on the sub-main screen
-    home_tab_main =    (1000,1500)
-    
-    # In-game items
-    keep_draw_button =      (3000,4000)
-    mulligan_button =       (3000,5000)
-    question_mark_area =    (0,200)
-    friends_icon_in_match = (200,500)
-    p1_main_phase =         (500, 600)
-    p1_second_phase =       (500, 600)
-    p2_main_phase =         (700, 800)
-    p2_second_phase =       (700, 800)
-    undo_button =           (500, 800)
-    opponent_avatar =       (1000,1300)
-    choose_one_option =     (500,600)
-    combat_shield_icon =    (500, 600)
-    sword_icon =            (500,1000)
-    next_button =           (1500,3500)
-    cancel_button =         (2300,2600)
-    no_attacks_button =     (1000,2500)
-    blocking_shield =       (500,600)
-    # End-game items
-    friends_icon_match_result = (0, 70)
-    friends_icon_rewards =      (0, 70)
-
-#TODO Unverified
-    block_order = (500, 600)
-
 def leftClick(p):
     """Performs a single left click of the mouse at position p
 
@@ -374,51 +263,6 @@ def doubleLeftClick(p):
         pass
     else:
         pyautogui.doubleClick(x=p[0], y=p[1], interval=0.25)
-
-def mousePos(cord):
-    """Sets the mouse cursor to a specific set of coordinates on the screen
-
-    Args:
-        cord (x,y): position on the screen
-    """
-    if MOUSE_MOVE_DISABLE:
-        pass
-    else:
-        win32api.SetCursorPos((cord[0], cord[1]))
-
-def get_grey_scale_sum(bbox):
-    """Calculates the greyscale value sum of a bounding box given a set of x,y coordinates
-
-    Args:
-        bbox (ul_x,ul_y,lr_x,lr_y): two sets of coordinates which define a bounding box\n
-        ul - upper left\n
-        lr - lower right
-
-    Returns:
-        int: sum of pixel values found within the bounding box
-    """
-    
-    # Grab an RGB image defined by the bounding box (bbox)
-    RGB_image = ImageGrab.grab(bbox)
-    # Convert the rgb image into a grey-scale image
-    # We do this to get the "intensity" values for each pixel in the box we defined
-    # Now the color in the box does not matter but the intensity of the collective pixels does.
-    GS_image = ImageOps.grayscale(RGB_image)
-    # Returns a list of (# pixels with value, value)
-    pixel_intensity_counts = GS_image.getcolors()
-    # Converts the list into a numpy array of arrays
-    # Note: a list that looks like [(1,33), (2,44)] turns into
-    #    a == [array([1,33]), array([2,44])]
-    # We have to do this because python cannot natively add a bunch of tuples together
-    a = numpy.array(pixel_intensity_counts)
-    # Now that we have an array of arrays sum up everything in the newly flattened array
-    # Note: This also adds in '# pixels with value` to the total so an array like:
-    #   [array([1,33]), array([2,44])] 
-    #   sums to -> 1+33+2+44 = 80
-    a = a.sum()
-    # Returns the "total intensity" found within the boundbox provided to this function.
-    # The individual intensity values are in grey scale going from 0(black) to 255(white)
-    return a
 
 def check_mtga_window_size():
     # First find the 'MTGA' window, if the name in the upper left corner of the game window
@@ -683,8 +527,13 @@ def play_my_cards():
                     leftClick(Cord.resolve_button)
                     
                     # If the opponent has chosen multiple blockers just click the done button
-                    block_order_value = get_grey_scale_sum(Zone.block_order)
-                    if block_order_value in range(Range.block_order[0], Range.block_order[1]):
+                    found_text = []
+                    found_text.append(extract_text(text_loc_dict['order blockers'], BLOCK_THRESHOLD))
+                    found_text.append(extract_text(text_loc_dict['done'], BRIGHT_THRESHOLD))
+                    found_text.append(extract_text(text_loc_dict['first'], BRIGHT_THRESHOLD))
+                    if ( ('order blockers' in found_text) or
+                         ('done' in found_text) or
+                         ('first' in found_text)):
                         print("Detected Block Order, clicking done...")
                         leftClick(Cord.order_blockers_done)
                 else:
