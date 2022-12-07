@@ -1,14 +1,10 @@
-# Updated version of the MTGA bot that uses image recognition to determine where we are in the game
-# and what we will do next as opposed to looking for pixel intensity values in the game
+# MTGA bot that uses image recognition to determine where we are in the game and what we will do next.
 # The game does not have to be in a specific window mode, it will attempt to re-size and move the window to the place
-# where the program needs it to be. Windowed mode is recommended.
-
-
+# where the program needs it to be. 
+# Windowed mode is recommended.
 
 from PIL import ImageGrab, ImageOps
-import numpy                    # gives us access to array
 import time
-import win32api
 from random import randrange
 from datetime import datetime
 import logging                  # Log file creator
@@ -18,12 +14,13 @@ from PIL import ImageGrab, Image, ImageOps, ImageFilter # Capture images, perfor
 import pytesseract              # Text recognition
 import os
 
-home_directory = os.path.expanduser( '~' )
+# SET THIS TO YOUR USERNAME
+MTGA_USER_NAME = "chriscas"         # Enter your MTGA username so text recognition can sort out when you are in a match
+
 
 # ----- SETTINGS -----
 # These settings can be used to fine tune how the bot acts. It may be the case that the bot is clicking too fast or slow
 # on your machine, resulting in loops being broken. Below are the settings that worked on my own machine.
-MTGA_USER_NAME = "chriscas"         # Enter your MTGA username so text recognition can sort out when you are in a match
 
 ATTACK_PROBABILITY = 100            # Percentage chance that the bot will attack with all creatures
 
@@ -60,16 +57,20 @@ formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
 logger.addHandler(hdlr)
 logger.setLevel(LOG_LEVEL)
-
 # -------------------
 
-# Dictionary list of keywords and their pixel box location on the screen
+# YOU NEED TO VERIFY THIS MATCHES YOUR INSTALLATION PATH
+HOME_DIR = os.path.expanduser( '~' )
+pytesseract.pytesseract.tesseract_cmd = HOME_DIR + r'\AppData\Local\Tesseract-OCR\tesseract.exe'
+
+# Dictionary list of keywords and their pixel box location on the screen (upper left x,y upper right x,y)
 text_loc_dict = {
-    "play":            (1650,980,1830,1020), # Play button on the lower right on main screen or sub-main screen
-    "home":            (80,75,140,95),       # Home tab on the main screen and sub-main screen
-    "keep" :           (1070,855,1186,984),  # Keep button when a match starts
-    "mulligan" :       (714,854,881,893),    # Mulligan button when a match starts
-    "no_blocks" :      (1694,928,1864,961),  # No blocks button during a match
+    MTGA_USER_NAME :   (90,1000,260,1040),    # Username in the lower left corner while in match
+    "play":            (1650,980,1830,1020),  # Play button on the lower right on main screen or sub-main screen
+    "home":            (80,75,140,95),        # Home tab on the main screen and sub-main screen
+    "keep" :           (1070,855,1186,984),   # Keep button when a match starts
+    "mulligan" :       (714,854,881,893),     # Mulligan button when a match starts
+    "no_blocks" :      (1694,928,1864,961),   # No blocks button during a match
     "cancel" :         (1693,925,1865,966), 
     "attacker" :       (1722,929,1854,964), 
     "all atta" :       (1693,925,1865,966), 
@@ -77,42 +78,41 @@ text_loc_dict = {
     "cancel attacks" : (1667,865,1883,900), 
     "undo_button" :    (1765,739,1812,756), 
     "last played" :    (1562,203,1746,237),
-    "standard play" :  (1635,480,1763,504), # standard  match under table icon match type
-    "alchemy play" :   (1635,536,1763,564), # alchemy match under table icon match type
-    "historic play" :  (1635,592,1763,624), # historic match under table icon match type
-    "explorer play" :  (1635,648,1763,684), # explorer match under table icon match type
-    "bot match" :      (1635,704,1763,744), # Bot match under table icon match type
-    "brawl" :          (62,133,216,182),    # Brawl in the upper left corner of screen
-    "ranked" :         (1563,205,1681,237), # Ranked under table icon match type
-    "brawl" :          (1563,205,1681,237), # Brawl under table icon match type
-    MTGA_USER_NAME :   (90,1000,260,1040),   # Username in the lower left corner while in match
+    "standard play" :  (1635,480,1763,504),   # standard  match under table icon match type
+    "alchemy play" :   (1635,536,1763,564),   # alchemy match under table icon match type
+    "historic play" :  (1635,592,1763,624),   # historic match under table icon match type
+    "explorer play" :  (1635,648,1763,684),   # explorer match under table icon match type
+    "bot match" :      (1635,704,1763,744),   # Bot match under table icon match type
+    "brawl" :          (62,133,216,182),      # Brawl in the upper left corner of screen
+    "ranked" :         (1563,205,1681,237),   # Ranked under table icon match type
+    "brawl" :          (1563,205,1681,237),   # Brawl under table icon match type
     "view battlefield":(1590,100,1800,140),
     "next" :           (1735,931,1814,968),
     "end turn" :       (1705,930,1845,966),
-    "pass" :           (1740,930,1808,962), # Finds "pass" on opponents turn
-    "no blocks" :      (1700,929,1849,963),  # Finds "no blocks" in game
-    "my turn" :        (1710,929,1837,965), # Finds "my turn" in game
-    "to combat" :      (1725,977,1820,996), # [FAINT_THRESHOLD]
-    "to end" :         (1725,977,1820,996), # [FAINT_THRESHOLD]
-    "to blockers" :    (1725,977,1820,996), # [FAINT_THRESHOLD]
-    "to damage" :    (1725,977,1820,996), # [FAINT_THRESHOLD]
-    "to attackers" :   (1725,977,1820,996), # [FAINT_THRESHOLD]
-    "end turn" :       (1725,977,1820,996), # [FAINT_THRESHOLD]
-    "opponent's turn": (1684,931,1861,967), # Finds "opponent's turn in game" [FAINT_THRESHOLD]
-    "pass" :           (1735,931,1814,968),  # Finds "pass" in game
+    "pass" :           (1740,930,1808,962),   # Finds "pass" on opponents turn
+    "no blocks" :      (1700,929,1849,963),   # Finds "no blocks" in game
+    "my turn" :        (1710,929,1837,965),   # Finds "my turn" in game
+    "to combat" :      (1725,977,1820,996),   # [FAINT_THRESHOLD]
+    "to end" :         (1725,977,1820,996),   # [FAINT_THRESHOLD]
+    "to blockers" :    (1725,977,1820,996),   # [FAINT_THRESHOLD]
+    "to damage" :    (1725,977,1820,996),     # [FAINT_THRESHOLD]
+    "to attackers" :   (1725,977,1820,996),   # [FAINT_THRESHOLD]
+    "end turn" :       (1725,977,1820,996),   # [FAINT_THRESHOLD]
+    "opponent's turn": (1684,931,1861,967),   # Finds "opponent's turn in game" [FAINT_THRESHOLD]
+    "pass" :           (1735,931,1814,968),   # Finds "pass" in game
     "resolve" :        (1716,932,1835,965),
     "click to continue":(856,1023,1067,1056), # Finds "click to continue" when a match ends
-    "defeat" :          (778,492,1141,603),  # Finds "defeat" on results screen
-    "victory" :         (704,491,1212,620),  # Finds 'victory' on the results screen
-    "choose one" :      (802,87,1119,143),   # Finds "choose one" text for a multi-play choice card
-    "done" :            (913,855,1010,892),  # Finds 'done' on order blockers screen
-    "first" :           (543,723,634,768),   # Finds 'first' on order blockers screen
-    "order blockers" :  (758,84,1161,143) # NEEDS A custom THRESHOLD OF 200, its an odd color... 
+    "defeat" :          (778,492,1141,603),   # Finds "defeat" on results screen
+    "victory" :         (704,491,1212,620),   # Finds 'victory' on the results screen
+    "choose one" :      (802,87,1119,143),    # Finds "choose one" text for a multi-play choice card
+    "done" :            (913,855,1010,892),   # Finds 'done' on order blockers screen
+    "first" :           (543,723,634,768),    # Finds 'first' on order blockers screen
+    "order blockers" :  (758,84,1161,143)     # NEEDS A custom THRESHOLD OF 200, its an odd color... 
     }
 FAINT_THRESHOLD =   75  # Used to detect faint text on the screen
 BRIGHT_THRESHOLD = 235  # Used to detect bright text on the screen
 BLOCK_THRESHOLD =  200  # Used on the order blocker screen as the text is slightly greyed out
-pytesseract.pytesseract.tesseract_cmd = home_directory + r'\AppData\Local\Tesseract-OCR\tesseract.exe'
+
 
 def extract_text(bb_coordinates, threshold=235):
     
@@ -167,6 +167,7 @@ def scan_screen_for_text(items_to_scan=text_loc_dict):
         img.save("capture.jpg")
         img = Image.open("capture.jpg")
         text = pytesseract.image_to_string(img, lang='eng', config='--psm 12 --oem 3')
+        # Only add text to our text_found list if we match a known text value
         if key in text.lower().strip():
             print(f"{key}: {text.lower().strip()}")
             text_found.append(key)
@@ -632,11 +633,16 @@ def match_actions():
     else:
         print("Match is over, going back to main loop")
 
+
+#########################################################
+# MAIN
+#########################################################
 logger.info("*** Started mgta_bot ***")
 while True:
-    # This bot is going to assume its started while sitting at the main screen. DO NOT attempt to 
-    # start it from any other screen.
+    # Verify the window is properly sized and its position on the screen is correct
     check_mtga_window_size()
+    # We have no idea where we are, look for text all over the place
+    # TODO see if there is a way to speed this up
     screen = scan_screen()
     
     if screen == "Start":
