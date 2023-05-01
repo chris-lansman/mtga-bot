@@ -355,7 +355,7 @@ def check_if_my_turn():
         # 'pass' + 'to damage'
         # 'my turn' + 'end turn'
     # NOTE: 
-    # There are times were the 'to' in 'to xxxx' cant be found so we just look
+    # There are times where the 'to' in 'to xxxx' cant be found so we just look
     # for the second part of the phrase ex) instead of 'to block' just 'block'
     # TODO WHY IS THIS NOT FINDING COMBAT!?!?!
     found_text.append(extract_text(text_loc_dict['next'], BRIGHT_THRESHOLD))
@@ -529,11 +529,15 @@ def turn_phase():
     # Assume our turn ended suddenly for some reason
     return "opponents turn"
     
+    # Assume our turn ended suddenly for some reason
+    return "opponents turn"
+    
 def play_attack_phase():
     # Allow possibly not attacking on a given turn if the randomly generated range is less than ATTACK_PROBABILITY
     x = randrange(1, 101)
     if x <= ATTACK_PROBABILITY:
         leftClick(Cord.resolve_button)
+        time.sleep(0.5)
         time.sleep(0.5)
         # In case opponent has a planeswalker, always select the player as the attack target
         leftClick(Cord.opponent_avatar)
@@ -561,10 +565,15 @@ def play_my_cards():
     # Its our turn, reset card cycles and start trying to play cards
     card_cycles = 1
     
+    
     # Loop over our cards MAX_CARD_CYCLES times trying to play cards
     while(card_cycles <= MAX_CARD_CYCLES):
 
         print("Beginning play_my_cards phase...")
+        
+        # Keep track of times we hit cancel, if we hit it 0 times in a given
+        # play through dont bother playing a second time through 
+        cancel_count = 0
         
         # Keep track of times we hit cancel, if we hit it 0 times in a given
         # play through dont bother playing a second time through 
@@ -589,16 +598,17 @@ def play_my_cards():
                 if (check_if_card_action_and_perform()):
                     cancel_count += 1
                     
+                if (check_if_card_action_and_perform()):
+                    cancel_count += 1
+                    
             elif ("attack phase" == phase):
                 play_attack_phase()
                 # Our turn is done, trigger leaving the card play loop
                 card_cycles += 99
-                break
             
             elif ("opponents turn" == phase):
                 print("Cant play any more cards and cant attack and its auto-moved to my opponents turn, ending my card play loop")
                 card_cycles += 99
-                break
 
         # This is an attempt at speeding up the card play logic.
         # No cards were played this pass so none will be played next pass, exit loop
