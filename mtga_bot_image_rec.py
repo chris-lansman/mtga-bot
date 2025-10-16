@@ -3,46 +3,37 @@
 # where the program needs it to be. 
 # Windowed mode is recommended.
 
-from PIL import ImageGrab, ImageOps
 import time
-from random import randrange
-from datetime import datetime
-import logging                  # Log file creator
-import win32gui                 # Adjust window sizing
-import pyautogui                # Mouse clicks
-from PIL import ImageGrab, Image, ImageOps, ImageFilter # Capture images, perform image filtering
-import pytesseract              # Text recognition
 import os
 import re
+import logging
+from random import randrange
+from datetime import datetime
+import win32gui
+import pyautogui
+from PIL import ImageGrab, Image, ImageOps, ImageFilter
+import pytesseract
 
-# SET THIS TO YOUR USERNAME
-MTGA_USER_NAME = "chriscas"         # Enter your MTGA username so text recognition can sort out when you are in a match
+# Try to import config, fall back to defaults if not found
+try:
+    from config import (
+        MTGA_USER_NAME, TESSERACT_PATH, ATTACK_PROBABILITY,
+        MAX_CARD_CYCLES, CLICKS_DISABLED, WINDOW_LOC_REZ, LOG_LEVEL
+    )
+except ImportError:
+    # Default configuration if config.py is not found
+    MTGA_USER_NAME = "chriscas"
+    TESSERACT_PATH = None
+    ATTACK_PROBABILITY = 100
+    MAX_CARD_CYCLES = 2
+    CLICKS_DISABLED = False
+    WINDOW_LOC_REZ = (0, 0, 1920, 1080)
+    LOG_LEVEL = "INFO"
+    print("Warning: config.py not found, using default settings")
 
-
-# ----- SETTINGS -----
-# These settings can be used to fine tune how the bot acts. It may be the case that the bot is clicking too fast or slow
-# on your machine, resulting in loops being broken. Below are the settings that worked on my own machine.
-
-ATTACK_PROBABILITY = 100            # Percentage chance that the bot will attack with all creatures
-
-MAX_CARD_CYCLES = 2                 # Maximum number of times the bot will cycle through cards attempting to play them
-
-DAILY_FULL_GAMES = 30               # How many full games will be played in a rotation before going to slow play mode
-SECONDS_UNTIL_ROTATION = 43200      # How often the bot will switch from slow play mode (86400 = 1 day, 3600 = 1 hour)
-
-STATIC_CLICK_DRAW_ACCEPT = True     # A fix for difficulty detecting draw accept. Clicks Accept after x seconds delay.
-SLOW_DRAW_bt_play_MULLIGAN_PRESS_DELAY = 10    # Delay before pressing the accept draw button (may not always hit)
-
-CLICKS_DISABLED = False             # Mouse clicks will not register, for testing
-
-LOG_LEVEL = logging.INFO
-
-WINDOW_LOC_REZ = (0,0,1920,1080) # Expected resolution and location of game window
-# ----- GLOBALS -----
-
-DECK_COLORS = ['Green', 'Black', 'White', 'Blue', 'Red'] # Decks for auto select
-GAME_COUNT = 0                                           # Keep track of full games
-start_time_utc = (datetime.today()).timestamp()          # Time when bot started in UTC
+# Convert LOG_LEVEL string to logging constant if needed
+if isinstance(LOG_LEVEL, str):
+    LOG_LEVEL = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
 
 # ----- SET UP LOGGING -----
 
@@ -52,58 +43,68 @@ formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 hdlr.setFormatter(formatter)
 logger.addHandler(hdlr)
 logger.setLevel(LOG_LEVEL)
-# -------------------
 
-# YOU NEED TO VERIFY THIS MATCHES YOUR INSTALLATION PATH
-HOME_DIR = os.path.expanduser( '~' )
-pytesseract.pytesseract.tesseract_cmd = HOME_DIR + r'\AppData\Local\Tesseract-OCR\tesseract.exe'
+# ----- TESSERACT CONFIGURATION -----
+# Set tesseract path if provided, otherwise assume it's in system PATH
+if TESSERACT_PATH:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+else:
+    # Try common installation paths
+    HOME_DIR = os.path.expanduser('~')
+    possible_paths = [
+        HOME_DIR + r'\AppData\Local\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        '/usr/bin/tesseract',
+        '/usr/local/bin/tesseract'
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
 
 # Dictionary list of keywords and their pixel box location on the screen (upper left x,y upper right x,y)
+# Note: Some entries have comments like [FAINT_THRESHOLD] or [BRIGHT_THRESHOLD] to indicate which threshold to use
 text_loc_dict = {
-    MTGA_USER_NAME :   (90,1000,260,1040),    # Username in the lower left corner while in match
-    "play":            (1650,980,1830,1020),  # Play button on the lower right on main screen or sub-main screen
-    "home":            (80,75,140,95),        # Home tab on the main screen and sub-main screen
-    "keep" :           (1070,855,1186,984),   # Keep button when a match starts
-    "mulligan" :       (714,854,881,893),     # Mulligan button when a match starts
-    "no_blocks" :      (1694,928,1864,961),   # No blocks button during a match
-    "cancel" :         (1693,925,1865,966), 
-    "attacker" :       (1722,929,1854,964), 
-    "all attack" :       (1695,928,1850,960), 
-    "no attacks" :     (1691,865,1861,900), 
-    "cancel attacks" : (1667,865,1883,900), 
-    "undo_button" :    (1765,739,1812,756), 
-    "last played" :    (1562,203,1746,237),
-    "standard play" :  (1635,480,1763,504),   # standard  match under table icon match type
-    "alchemy play" :   (1635,536,1763,564),   # alchemy match under table icon match type
-    "historic play" :  (1635,592,1763,624),   # historic match under table icon match type
-    "explorer play" :  (1635,648,1763,684),   # explorer match under table icon match type
-    "bot match" :      (1635,704,1763,744),   # Bot match under table icon match type
-    "brawl" :          (62,133,216,182),      # Brawl in the upper left corner of screen
-    "ranked" :         (1563,205,1681,237),   # Ranked under table icon match type
-    "brawl" :          (1563,205,1681,237),   # Brawl under table icon match type
-    "view battlefield":(1590,100,1800,140),
-    "next" :           (1740,934,1810,960),   # Find 'next' button in combat
-    "end turn" :       (1705,930,1845,966),
-    "pass" :           (1740,930,1808,962),   # Finds "pass" on opponents turn
-    "no blocks" :      (1700,929,1849,963),   # Finds "no blocks" in game
-    "my turn" :        (1710,929,1837,965),   # Finds "my turn" in game
-    "to combat" :      (1730,979,1818,996),   # [FAINT_THRESHOLD]
-    "to end" :         (1725,977,1820,996),   # [FAINT_THRESHOLD]
-    "to blockers" :    (1725,977,1820,996),   # [FAINT_THRESHOLD]
-    "to damage" :    (1725,977,1820,996),     # [FAINT_THRESHOLD]
-    "to attackers" :   (1725,977,1820,996),   # [FAINT_THRESHOLD]
-    "end turn" :       (1725,977,1820,996),   # [FAINT_THRESHOLD]
-    "opponent's turn": (1684,931,1861,967),   # Finds "opponent's turn in game" [FAINT_THRESHOLD]
-    "pass" :           (1735,931,1814,968),   # Finds "pass" in game
-    "resolve" :        (1716,932,1835,965),
-    "click to continue":(856,1023,1067,1056), # Finds "click to continue" when a match ends
-    "defeat" :          (778,492,1141,603),   # Finds "defeat" on results screen
-    "victory" :         (704,491,1212,620),   # Finds 'victory' on the results screen
-    "choose one" :      (802,87,1119,143),    # Finds "choose one" text for a multi-play choice card
-    "done" :            (913,855,1010,892),   # Finds 'done' on order blockers screen
-    "first" :           (543,723,634,768),    # Finds 'first' on order blockers screen
-    "order blockers" :  (758,84,1161,143),    # NEEDS A custom THRESHOLD OF 200, its an odd color... 
-    "click to continue":(855,1022,1062,1055)  # [FAINT_THRESHOLD]
+    MTGA_USER_NAME:     (90, 1000, 260, 1040),    # Username in the lower left corner while in match
+    "play":             (1650, 980, 1830, 1020),  # Play button on the lower right on main screen or sub-main screen
+    "home":             (80, 75, 140, 95),        # Home tab on the main screen and sub-main screen
+    "keep":             (1070, 855, 1186, 984),   # Keep button when a match starts
+    "mulligan":         (714, 854, 881, 893),     # Mulligan button when a match starts
+    "cancel":           (1693, 925, 1865, 966),   # Cancel button during a match
+    "attacker":         (1722, 929, 1854, 964),   # Attacker text during combat
+    "all attack":       (1695, 928, 1850, 960),   # All attack button during combat
+    "no attacks":       (1691, 865, 1861, 900),   # No attacks button during combat
+    "cancel attacks":   (1667, 865, 1883, 900),   # Cancel attacks button
+    "undo_button":      (1765, 739, 1812, 756),   # Undo button location
+    "last played":      (1562, 203, 1746, 237),   # Last played indicator
+    "standard play":    (1635, 480, 1763, 504),   # Standard match under table icon match type
+    "alchemy play":     (1635, 536, 1763, 564),   # Alchemy match under table icon match type
+    "historic play":    (1635, 592, 1763, 624),   # Historic match under table icon match type
+    "explorer play":    (1635, 648, 1763, 684),   # Explorer match under table icon match type
+    "bot match":        (1635, 704, 1763, 744),   # Bot match under table icon match type
+    "brawl":            (1563, 205, 1681, 237),   # Brawl under table icon match type
+    "ranked":           (1563, 205, 1681, 237),   # Ranked under table icon match type
+    "view battlefield": (1590, 100, 1800, 140),   # View battlefield during card selection
+    "next":             (1740, 934, 1810, 960),   # Next button in combat
+    "pass":             (1735, 931, 1814, 968),   # Pass button in game
+    "no blocks":        (1700, 929, 1849, 963),   # No blocks button in game
+    "my turn":          (1710, 929, 1837, 965),   # My turn indicator in game
+    "to combat":        (1730, 979, 1818, 996),   # [FAINT_THRESHOLD]
+    "to end":           (1725, 977, 1820, 996),   # [FAINT_THRESHOLD]
+    "to blockers":      (1725, 977, 1820, 996),   # [FAINT_THRESHOLD]
+    "to damage":        (1725, 977, 1820, 996),   # [FAINT_THRESHOLD]
+    "to attackers":     (1725, 977, 1820, 996),   # [FAINT_THRESHOLD]
+    "end turn":         (1725, 977, 1820, 996),   # [FAINT_THRESHOLD]
+    "opponent's turn":  (1684, 931, 1861, 967),   # Opponent's turn indicator [FAINT_THRESHOLD]
+    "resolve":          (1716, 932, 1835, 965),   # Resolve button
+    "click to continue": (855, 1022, 1062, 1055), # Click to continue at match end [FAINT_THRESHOLD]
+    "defeat":           (778, 492, 1141, 603),    # Defeat on results screen
+    "victory":          (704, 491, 1212, 620),    # Victory on results screen
+    "choose one":       (802, 87, 1119, 143),     # Choose one text for multi-choice card
+    "done":             (913, 855, 1010, 892),    # Done button on order blockers screen
+    "first":            (543, 723, 634, 768),     # First on order blockers screen
+    "order blockers":   (758, 84, 1161, 143),     # Order blockers text [BLOCK_THRESHOLD=200]
     }
 FAINT_THRESHOLD =   75  # Used to detect faint text on the screen
 BRIGHT_THRESHOLD = 238  # Used to detect bright text on the screen
@@ -111,32 +112,46 @@ BLOCK_THRESHOLD =  200  # Used on the order blocker screen as the text is slight
 
 
 def extract_text(bb_coordinates, threshold=235):
+    """Extract text from a screen region using OCR.
     
-    # Grab a box based on (x,y,x,y) coordinates
-    img = ImageGrab.grab(bb_coordinates) 
-    img = ImageOps.grayscale(img)   
-    img = img.filter(ImageFilter.SMOOTH)
-    img = img.filter(ImageFilter.EDGE_ENHANCE)
-    img = img.convert('L')    
-    # Invert pixels since text is white on the screen
-    # This will leave you with black text and a white background 
-    # which pytesseract does a better job with
-    width, height = img.size
-    for x in range(width):
-        for y in range(height):
-            #if intensity less than threshold, assign black
-            if img.getpixel((x,y)) < threshold:
-                img.putpixel((x,y),255)
-
-            #if intensity greater than threshold, assign white 
-            else:
-                img.putpixel((x,y),0)
-    img = img.filter(ImageFilter.SMOOTH)
-    img = img.filter(ImageFilter.EDGE_ENHANCE)
-    img.save("capture.jpg")
-    img = Image.open("capture.jpg")
-    text = pytesseract.image_to_string(img, lang='eng', config='--psm 12 --oem 3')
-    return re.sub(r'[^A-Za-z0-9 ]+', '', text.lower().strip())
+    Args:
+        bb_coordinates: Tuple of (x1, y1, x2, y2) defining the bounding box
+        threshold: Pixel intensity threshold for text detection (default: 235)
+        
+    Returns:
+        str: Cleaned text found in the region, or empty string on error
+    """
+    try:
+        # Grab a box based on (x,y,x,y) coordinates
+        img = ImageGrab.grab(bb_coordinates)
+        img = ImageOps.grayscale(img)
+        img = img.filter(ImageFilter.SMOOTH)
+        img = img.filter(ImageFilter.EDGE_ENHANCE)
+        img = img.convert('L')
+        
+        # Invert pixels since text is white on the screen
+        # This will leave you with black text and a white background
+        # which pytesseract does a better job with
+        width, height = img.size
+        for x in range(width):
+            for y in range(height):
+                # if intensity less than threshold, assign black
+                if img.getpixel((x, y)) < threshold:
+                    img.putpixel((x, y), 255)
+                # if intensity greater than threshold, assign white
+                else:
+                    img.putpixel((x, y), 0)
+        
+        img = img.filter(ImageFilter.SMOOTH)
+        img = img.filter(ImageFilter.EDGE_ENHANCE)
+        
+        # Use pytesseract directly without saving to disk
+        text = pytesseract.image_to_string(img, lang='eng', config='--psm 12 --oem 3')
+        return re.sub(r'[^A-Za-z0-9 ]+', '', text.lower().strip())
+    
+    except Exception as e:
+        logger.error(f"Error extracting text from coordinates {bb_coordinates}: {e}")
+        return ""
 
 
 class Cord:
@@ -209,125 +224,159 @@ class Cord:
                      (360,1050))
 
 def leftClick(p):
-    """Performs a single left click of the mouse at position p
+    """Performs a single left click of the mouse at position p.
 
     Args:
-        p (x,y): coordinate on screen where we want the mouse to click
+        p (tuple): (x, y) coordinate on screen where we want the mouse to click
     """
-    if CLICKS_DISABLED:
-        pass
-    else:
-        pyautogui.mouseDown(x=p[0], y=p[1]); 
-        pyautogui.mouseUp(x=p[0], y=p[1])
+    if not CLICKS_DISABLED:
+        try:
+            pyautogui.mouseDown(x=p[0], y=p[1])
+            pyautogui.mouseUp(x=p[0], y=p[1])
+        except Exception as e:
+            logger.error(f"Error clicking at position {p}: {e}")
+
 
 def doubleLeftClick(p):
-    """Performs a double left click of the mouse at position p
+    """Performs a double left click of the mouse at position p.
 
     Args:
-        p (x,y): coordinate on screen where we want the mouse to click
+        p (tuple): (x, y) coordinate on screen where we want the mouse to click
     """
-    if CLICKS_DISABLED:
-        pass
-    else:
-        pyautogui.doubleClick(x=p[0], y=p[1], interval=0.25)
+    if not CLICKS_DISABLED:
+        try:
+            pyautogui.doubleClick(x=p[0], y=p[1], interval=0.25)
+        except Exception as e:
+            logger.error(f"Error double-clicking at position {p}: {e}")
+
 
 def check_mtga_window_size():
-    # First find the 'MTGA' window, if the name in the upper left corner of the game window
-    # when in windowed mode every changes you will need to update this screen
-    # We only need to set this once.
-    window_handle = win32gui.FindWindow(None, "MTGA")
-    # Get the windows coordinates
-    window_coordinates = win32gui.GetWindowRect(window_handle)
-    # Verify the window is in the upper left corner of the screen 
-    # and that it is the correct size, if not set it properly.
-    if (WINDOW_LOC_REZ != window_coordinates):
-        # Move the window to a known offset (0,0) for the upper left corner, 
-        # and force a resize so this works on every system every time
-        win32gui.SetWindowPos(window_handle, None,0,0,1920,1080,0)
-        # Verify the coordinates are at (0,0,1920,1080)
+    """Check and adjust the MTGA window size and position.
+    
+    Returns:
+        bool: True if window was found and adjusted (if needed), False otherwise
+    """
+    try:
+        # First find the 'MTGA' window
+        # Note: If the window title changes, you'll need to update this
+        window_handle = win32gui.FindWindow(None, "MTGA")
+        
+        if not window_handle:
+            logger.warning("MTGA window not found")
+            return False
+        
+        # Get the window's coordinates
+        window_coordinates = win32gui.GetWindowRect(window_handle)
+        
+        # Verify the window is in the expected position and size
+        if WINDOW_LOC_REZ != window_coordinates:
+            logger.info(f"Adjusting window from {window_coordinates} to {WINDOW_LOC_REZ}")
+            # Move the window to a known offset (0,0) for the upper left corner,
+            # and force a resize so this works on every system every time
+            win32gui.SetWindowPos(window_handle, None, 0, 0, 1920, 1080, 0)
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error checking/adjusting MTGA window: {e}")
+        return False
         
 
 def scan_screen_for_text():
-    """This method has no idea where we are in the game so it looks for
-    any possible combinations of places we could be. The frist one that
+    """Scan the screen to determine which game state we're in.
+    
+    This method has no idea where we are in the game so it looks for
+    any possible combinations of places we could be. The first one that
     matches we tell the calling code and exit.
     
     The found_text checks were broken up to speed up the call to this method.
     Calls to pytesseract are very costly time wise.
+    
+    Returns:
+        str: Game state identifier ('Start', 'Deck Select', 'In Match', 'match results', or None)
     """
-
-    found_text = []
-    found_text.append(extract_text(text_loc_dict['play'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['last played'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['standard play'], BRIGHT_THRESHOLD))
-    if ( ('play' in found_text) and 
-         ('last played' not in found_text) and
-         ('standard play' not in found_text)):
-        print("On start screen with Play button")
-        return("Start")
+    try:
+        found_text = []
+        found_text.append(extract_text(text_loc_dict['play'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['last played'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['standard play'], BRIGHT_THRESHOLD))
+        
+        if ('play' in found_text and 
+            'last played' not in found_text and
+            'standard play' not in found_text):
+            logger.info("On start screen with Play button")
+            return "Start"
+        
+        found_text.append(extract_text(text_loc_dict['home'], BRIGHT_THRESHOLD))
+        if 'home' in found_text and 'last played' in found_text:
+            logger.info("On sub-main screen last played")
+            return "Deck Select"
+        
+        found_text.append(extract_text(text_loc_dict['alchemy play'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['historic play'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['explorer play'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['bot match'], BRIGHT_THRESHOLD))
+        
+        # Fixed operator precedence - added proper parentheses
+        if ('home' in found_text and 
+            ('standard play' in found_text or
+             'alchemy play' in found_text or
+             'historic play' in found_text or
+             'explorer play' in found_text or
+             'bot match' in found_text)):
+            logger.info("On sub-main screen table tab")
+            return "Deck Select"
+        
+        found_text.append(extract_text(text_loc_dict['keep'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['mulligan'], BRIGHT_THRESHOLD))
+        
+        if 'keep' in found_text or 'mulligan' in found_text:
+            logger.info("In Match")
+            return "In Match"
+        
+        found_text.append(extract_text(text_loc_dict[MTGA_USER_NAME], BRIGHT_THRESHOLD))
+        if MTGA_USER_NAME in found_text:
+            logger.info("In Match")
+            return "In Match"
+        
+        found_text.append(extract_text(text_loc_dict['defeat'], BRIGHT_THRESHOLD))
+        found_text.append(extract_text(text_loc_dict['victory'], BRIGHT_THRESHOLD))
+        
+        if 'defeat' in found_text or 'victory' in found_text:
+            logger.info("Match results screen")
+            return "match results"
+        
+        return None
     
-    found_text.append(extract_text(text_loc_dict['home'], BRIGHT_THRESHOLD))
-    if ( ('home' in found_text) and 
-         ('last played' in found_text)):
-        print("On sub-main screen last played")
-        return("Deck Select")
-    
-    found_text.append(extract_text(text_loc_dict['standard play'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['alchemy play'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['historic play'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['explorer play'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['bot match'], BRIGHT_THRESHOLD))
-    if ( ('home' in found_text) and 
-         ('standard play' in found_text) or
-         ('alchemy play' in found_text) or
-         ('historic play' in found_text) or
-         ('explorer play' in found_text) or
-         ('bot match' in found_text)):
-        print("On sub-main screen table tab")
-        return("Deck Select")
-    
-    found_text.append(extract_text(text_loc_dict['keep'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['mulligan'], BRIGHT_THRESHOLD))
-    
-    if ( ('keep' in found_text) or
-         ('mulligan' in found_text)):
-        print("In Match")
-        return("In Match")
-    
-    found_text.append(extract_text(text_loc_dict[MTGA_USER_NAME], BRIGHT_THRESHOLD))
-    if (MTGA_USER_NAME in found_text):
-        print("In Match")
-        return("In Match")
-    
-    
-    found_text.append(extract_text(text_loc_dict['defeat'], BRIGHT_THRESHOLD))
-    found_text.append(extract_text(text_loc_dict['victory'], BRIGHT_THRESHOLD))                                            
-    if ( ('defeat' in found_text) or
-         ('victory' in found_text)):
-        print("match results")
-        return("match results")
+    except Exception as e:
+        logger.error(f"Error scanning screen for text: {e}")
+        return None
     
 
 def click_play():
-
-    print("Clicking Play Button")
+    """Click the Play button."""
+    logger.info("Clicking Play Button")
     leftClick(Cord.play_button)
 
-def match_result_actions():
 
-    # Just click anywhere to proceed
-    print("Clicking to continue")
+def match_result_actions():
+    """Handle actions after match results are displayed."""
+    logger.info("Clicking to continue from match results")
     leftClick(Cord.click_to_continue)
 
-def rewards_actions():
 
-    # Click Start (Claim Prize)
-    print("Clicking Play (Claim) Button")
-    leftClick(Cord.bt_play)
+def rewards_actions():
+    """Handle rewards screen actions."""
+    logger.info("Clicking Play (Claim) Button")
+    leftClick(Cord.play_button)
     
 def select_deck_and_play_style(play_style):
-    """Selects the table tab, then (play_style) game type
+    """Selects the table tab, then the specified game type.
+    
+    Args:
+        play_style: Coordinate tuple for the desired play style
     """
+    logger.info("Selecting deck and play style")
     leftClick(Cord.table_icon_illum)
     time.sleep(0.25)
     leftClick(Cord.deck_select)
@@ -529,9 +578,6 @@ def turn_phase():
     # Assume our turn ended suddenly for some reason
     return "opponents turn"
     
-    # Assume our turn ended suddenly for some reason
-    return "opponents turn"
-    
 def play_attack_phase():
     # Allow possibly not attacking on a given turn if the randomly generated range is less than ATTACK_PROBABILITY
     x = randrange(1, 101)
@@ -561,27 +607,20 @@ def play_my_cards():
     """Keep trying to play cards from hand, if we have exhausted our cards to play but can attack
     trigger the attack phase button clicks, else move on.
     """
-    
     # Its our turn, reset card cycles and start trying to play cards
     card_cycles = 1
     
-    
     # Loop over our cards MAX_CARD_CYCLES times trying to play cards
-    while(card_cycles <= MAX_CARD_CYCLES):
-
-        print("Beginning play_my_cards phase...")
+    while card_cycles <= MAX_CARD_CYCLES:
+        logger.info("Beginning play_my_cards phase...")
         
         # Keep track of times we hit cancel, if we hit it 0 times in a given
-        # play through dont bother playing a second time through 
-        cancel_count = 0
-        
-        # Keep track of times we hit cancel, if we hit it 0 times in a given
-        # play through dont bother playing a second time through 
+        # play through don't bother playing a second time through
         cancel_count = 0
 
         # Iterate over possible cards in our hand, this just picks spots on the screen
         # that may or may not have cards sitting where it clicks.
-        for card in (Cord.cards_in_hand):
+        for card in Cord.cards_in_hand:
             
             # If at any time the match has ended, immediately break
             if (check_in_match() == False):
@@ -622,17 +661,16 @@ def play_my_cards():
         leftClick(Cord.next_button)
 
 def match_actions():
-    """Main match flow function. We dont leave here until a match has ended.
-    """
-    print("Starting match_actions...")
+    """Main match flow function. We don't leave here until a match has ended."""
+    logger.info("Starting match_actions...")
 
     # Keep looping until we have drawn our cards or determined we are returning to an in progress game.
-    while(check_if_my_card_draw_done() == False):
-        None
+    while not check_if_my_card_draw_done():
+        time.sleep(0.5)
 
     # MAIN match loop
-    while(check_in_match() == True):
-        print("Beginning In-Match Loop")
+    while check_in_match():
+        logger.info("Beginning In-Match Loop")
         
         # The game window can be resized back to your default settings at different times.
         # Check the size and position on screen and reset if necessary
@@ -640,58 +678,82 @@ def match_actions():
         
         # See if it's our opponent's turn and keep trying to press the resolve button
         # in the case where they have made an action that requires our response.
-        while(check_if_my_turn() == False):
-            # Double check if its actually our opponents turn
-            # There is a bit of a race condition here were we accidentally
+        while not check_if_my_turn():
+            # Double check if it's actually our opponent's turn
+            # There is a bit of a race condition here where we accidentally
             # skip our first stage of our turn.
-            if (check_if_my_turn() == False):
+            if not check_if_my_turn():
                 # Just keep clicking "next" if we get any prompts
                 leftClick(Cord.next_button)
-            None
+            time.sleep(0.5)
         
-        # Now its our turn, determine phase of play
+        # Now it's our turn, determine phase of play
         phase = turn_phase()
         
-        if ("play cards" == phase):            
+        if phase == "play cards":
             # Attempt to play the cards in our hand
             play_my_cards()
-        elif ("attack phase" == phase):
+        elif phase == "attack phase":
             play_attack_phase()
-        elif ("end turn" == phase):
+        elif phase == "end turn":
             leftClick(Cord.next_button)
-    else:
-        print("Match is over, going back to main loop")
+    
+    logger.info("Match is over, going back to main loop")
 
 
 #########################################################
 # MAIN
 #########################################################
-logger.info("*** Started mgta_bot ***")
-while True:
-    # Verify the window is properly sized and its position on the screen is correct
-    check_mtga_window_size()
+
+def main():
+    """Main bot loop."""
+    logger.info("*** Started MTGA Bot ***")
     
-    # We have no idea where we are, look for text all over the place
-    screen = scan_screen_for_text()
+    # Check if MTGA window is available
+    if not check_mtga_window_size():
+        logger.error("Failed to find MTGA window. Please ensure the game is running.")
+        return
     
-    if screen == "Start":
-        click_play()
+    try:
+        while True:
+            # Verify the window is properly sized and its position on the screen is correct
+            check_mtga_window_size()
+            
+            # We have no idea where we are, look for text all over the place
+            screen = scan_screen_for_text()
+            
+            if screen == "Start":
+                click_play()
+            
+            elif screen == "Deck Select":
+                select_deck_and_play_style(Cord.bot_ply_chk)
+                click_play()
+                
+            elif screen == "Replay":
+                click_play()
+
+            elif screen == "In Match":
+                match_actions()
+
+            elif screen == "match results":
+                logger.info("Match end")
+                match_result_actions()
+
+            elif screen == "Rewards":
+                rewards_actions()
+            
+            else:
+                logger.warning(f"Unknown screen state: {screen}")
+
+            time.sleep(1)
     
-    elif screen == "Deck Select":
-        select_deck_and_play_style(Cord.bot_ply_chk)
-        click_play()
-        
-    elif screen == "Replay":
-        click_play()
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
+    finally:
+        logger.info("Bot shutting down")
 
-    elif (screen == "In Match"):
-        match_actions()
 
-    elif screen == "match results":
-        logger.info("Match end")
-        match_result_actions()
-
-    elif screen == "Rewards":
-        rewards_actions()
-
-    time.sleep(1)
+if __name__ == "__main__":
+    main()

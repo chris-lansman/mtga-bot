@@ -1,7 +1,18 @@
-import pyautogui
-import time
+"""
+Simple utility to display mouse coordinates on the screen.
 
-# Simple tool to constantly get the mouse coordinates on the screen.
-# Run the program and then move the mouse around. 
-# Ctrl+c to terminate the program from the command line when you are done.
-pyautogui.displayMousePosition()
+This is useful for determining coordinate values for UI elements.
+Run the program and move the mouse around. Press Ctrl+C to exit.
+"""
+import pyautogui
+
+
+def main():
+    """Display mouse position continuously."""
+    print("Move your mouse around to see coordinates.")
+    print("Press Ctrl+C to exit.")
+    pyautogui.displayMousePosition()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,21 @@
+# MTGA Bot Requirements
+# Install with: pip install -r requirements.txt
+
+# Image processing and screen capture
+Pillow>=10.0.0
+
+# OCR text recognition
+pytesseract>=0.3.10
+
+# Mouse and keyboard control
+pyautogui>=0.9.54
+
+# Windows GUI manipulation (Windows only)
+pywin32>=306; sys_platform == 'win32'
+
+# Array processing for intensity calculations
+numpy>=1.24.0
+
+# Testing framework (optional, for running tests)
+pytest>=7.4.0
+

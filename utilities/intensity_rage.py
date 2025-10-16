@@ -1,24 +1,38 @@
 """
-Used to determine the min/max intensity of a given "zone"
-on the screen.
+Used to determine the min/max intensity of a given "zone" on the screen.
 
-Increase/decrease total_samples to allow for more samples
+Increase/decrease total_samples to allow for more samples.
 """
-import PIL
 import numpy
-from PIL import ImageGrab
-from PIL import ImageOps
+from PIL import ImageGrab, ImageOps
 import win32gui
 
+
 def configure_mtga_window():
-    # First find the 'MTGA' window, if the name in the upper left corner of the game window
-    # when in windowed mode every changes you will need to update this screen
-    window_handle = win32gui.FindWindow(None, "MTGA")
-    # Move the window to a known offset (0,0) for the upper left corner, 
-    # and force a resize so this works on every system every time
-    win32gui.SetWindowPos(window_handle,None,0,0,1280,720,0)
-    # Verify the coordinates are at (0,0,1920,1080)
-    window_coordinates = win32gui.GetWindowRect(window_handle)
+    """Configure the MTGA window to a known size and position.
+    
+    Returns:
+        tuple: Window coordinates (x1, y1, x2, y2) or None if window not found
+    """
+    try:
+        # First find the 'MTGA' window
+        window_handle = win32gui.FindWindow(None, "MTGA")
+        
+        if not window_handle:
+            print("Error: MTGA window not found")
+            return None
+        
+        # Move the window to a known offset (0,0) for the upper left corner,
+        # and force a resize so this works on every system every time
+        win32gui.SetWindowPos(window_handle, None, 0, 0, 1280, 720, 0)
+        
+        # Verify the coordinates
+        window_coordinates = win32gui.GetWindowRect(window_handle)
+        return window_coordinates
+    
+    except Exception as e:
+        print(f"Error configuring MTGA window: {e}")
+        return None
     
 class Cord:
 
@@ -124,43 +138,63 @@ class Zone:
     p1_main = create_bb(Cord.p1_main, BB_SMALL)
     
 def get_grey_scale_value(bbox):
-    # bbox - list of 4 values defining the x,y of the upper left corner and lower right corners of a box (x,y,x,y)
+    """Calculate the greyscale intensity value for a bounding box.
     
+    Args:
+        bbox: Tuple of 4 values defining the (x1, y1, x2, y2) corners of a box
+        
+    Returns:
+        int: Total intensity found within the bounding box
+    """
     # Grab an RGB image defined by the bounding box (bbox)
-    RGB_image = PIL.ImageGrab.grab(bbox)
+    rgb_image = ImageGrab.grab(bbox)
+    
     # Convert the rgb image into a grey-scale image
     # We do this to get the "intensity" values for each pixel in the box we defined
     # Now the color in the box does not matter but the intensity of the collective pixels does.
-    GS_image = PIL.ImageOps.grayscale(RGB_image)
+    gs_image = ImageOps.grayscale(rgb_image)
+    
     # Returns a list of (# pixels with value, value)
-    pixel_intensity_counts = GS_image.getcolors()
+    pixel_intensity_counts = gs_image.getcolors()
+    
     # Converts the list into a numpy array of arrays
     # Note: a list that looks like [(1,33), (2,44)] turns into
     #    a == [array([1,33]), array([2,44])]
     # We have to do this because python cannot natively add a bunch of tuples together
     a = numpy.array(pixel_intensity_counts)
+    
     # Now that we have an array of arrays sum up everything in the newly flattened array
     # Note: This also adds in '# pixels with value` to the total so an array like:
-    #   [array([1,33]), array([2,44])] 
+    #   [array([1,33]), array([2,44])]
     #   sums to -> 1+33+2+44 = 80
     a = a.sum()
-    # Returns the "total intensity" found within the boundbox provided to this function.
+    
+    # Returns the "total intensity" found within the bounding box provided to this function.
     # The individual intensity values are in grey scale going from 0(black) to 255(white)
     return a
 
-min = 9999
-max = 0
-total_samples = 100
 
-#configure_mtga_window()
+def main():
+    """Sample greyscale values from a specific zone to determine min/max range."""
+    min_val = 9999
+    max_val = 0
+    total_samples = 100
 
-while total_samples:
-    but_play_value = get_grey_scale_value(Zone.p1_main)
-    print(but_play_value)
-    if but_play_value > max:
-        max = but_play_value
-    if min > but_play_value:
-        min = but_play_value
-    total_samples -= 1
+    # Uncomment to configure MTGA window first
+    # configure_mtga_window()
 
-print(f"Value Range - min:{min}, max:{max}")
+    print(f"Sampling {total_samples} intensity values from Zone.p1_main...")
+    
+    for _ in range(total_samples):
+        value = get_grey_scale_value(Zone.p1_main)
+        print(value)
+        if value > max_val:
+            max_val = value
+        if min_val > value:
+            min_val = value
+
+    print(f"\nValue Range - min: {min_val}, max: {max_val}")
+
+
+if __name__ == "__main__":
+    main()
